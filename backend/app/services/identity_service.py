@@ -58,28 +58,13 @@ def _duplicate_error(field: str) -> HTTPException:
     return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail, headers={"code": code})
 
 
-async def claim_person_identity(
+async def _assert_no_conflicting_records(
     db: AsyncIOMotorDatabase,
-    *,
-    owner_type: str,
-    owner_id: str,
-    email: str,
-    employee_id: str,
+    email_key: str,
+    employee_key: str,
     ignore_owner: Optional[tuple[str, str]] = None,
-) -> list[str]:
-    """Atomically reserve normalized email and employee ID claims.
-
-    Existing documents are checked as a compatibility guard before the unique
-    claim writes, so old databases are protected even before migration has
-    populated all claims.
-    """
-    email_key = _normalize_email(email)
-    employee_key = _normalize_employee_id(employee_id)
-    if not email_key or not employee_key:
-        raise HTTPException(status_code=422, detail="Email and employee ID are required")
-
-    await backfill_existing_person_identity_claims(db)
-
+) -> None:
+    """Raise 409 if another person's record already uses this email / employee ID."""
     linked_mentor_user_ids = set()
     async for mentor in db.mentors.find({"userId": {"$exists": True, "$ne": None}}, {"userId": 1}):
         linked_mentor_user_ids.add(str(mentor.get("userId")))
@@ -112,6 +97,31 @@ async def claim_person_identity(
                 continue
             raise _duplicate_error(field)
 
+
+
+async def claim_person_identity(
+    db: AsyncIOMotorDatabase,
+    *,
+    owner_type: str,
+    owner_id: str,
+    email: str,
+    employee_id: str,
+    ignore_owner: Optional[tuple[str, str]] = None,
+) -> list[str]:
+    """Atomically reserve normalized email and employee ID claims.
+
+    Existing documents are checked as a compatibility guard before the unique
+    claim writes, so old databases are protected even before migration has
+    populated all claims.
+    """
+    email_key = _normalize_email(email)
+    employee_key = _normalize_employee_id(employee_id)
+    if not email_key or not employee_key:
+        raise HTTPException(status_code=422, detail="Email and employee ID are required")
+
+    await backfill_existing_person_identity_claims(db)
+    await _assert_no_conflicting_records(db, email_key, employee_key, ignore_owner)
+
     claims = [f"email:{email_key}", f"employeeId:{employee_key}"]
     inserted = []
     try:
@@ -142,3 +152,62 @@ async def claim_person_identity(
 
 async def release_person_identity(db: AsyncIOMotorDatabase, owner_id: str) -> None:
     await db.personIdentityClaims.delete_many({"ownerId": str(owner_id)})
+
+
+async def update_person_identity(
+    db: AsyncIOMotorDatabase,
+    *,
+    owner_type: str,
+    owner_id: str,
+    email: str,
+    employee_id: str,
+) -> dict:
+    """Move an existing person's email / employee ID claims to new values.
+
+    New claims are reserved atomically (unique index) before anything else
+    changes. Claims this person already holds are kept as-is, so editing only
+    one of the two values works. Returns {"added": [...], "stale": [...]}:
+    the caller rolls back `added` if the profile update fails, and releases
+    `stale` (the old values) once it succeeds.
+    """
+    email_key = _normalize_email(email)
+    employee_key = _normalize_employee_id(employee_id)
+    if not email_key or not employee_key:
+        raise HTTPException(status_code=422, detail="Email and employee ID are required")
+
+    await backfill_existing_person_identity_claims(db)
+    await _assert_no_conflicting_records(db, email_key, employee_key, (owner_type, str(owner_id)))
+
+    wanted = [f"email:{email_key}", f"employeeId:{employee_key}"]
+    held = {
+        row["claim"]
+        async for row in db.personIdentityClaims.find({"ownerId": str(owner_id)}, {"claim": 1})
+    }
+    added = []
+    try:
+        for claim in wanted:
+            if claim in held:
+                continue
+            await db.personIdentityClaims.insert_one({
+                "claim": claim, "ownerType": owner_type, "ownerId": str(owner_id),
+            })
+            added.append(claim)
+    except DuplicateKeyError:
+        if added:
+            await db.personIdentityClaims.delete_many({"claim": {"$in": added}, "ownerId": str(owner_id)})
+        raise _duplicate_error("employeeId" if claim.startswith("employeeId:") else "email")
+    except Exception:
+        if added:
+            await db.personIdentityClaims.delete_many({"claim": {"$in": added}, "ownerId": str(owner_id)})
+        raise
+    return {"added": added, "stale": sorted(held - set(wanted))}
+
+
+async def rollback_identity_update(db: AsyncIOMotorDatabase, owner_id: str, added: list) -> None:
+    if added:
+        await db.personIdentityClaims.delete_many({"claim": {"$in": added}, "ownerId": str(owner_id)})
+
+
+async def release_stale_identity_claims(db: AsyncIOMotorDatabase, owner_id: str, stale: list) -> None:
+    if stale:
+        await db.personIdentityClaims.delete_many({"claim": {"$in": stale}, "ownerId": str(owner_id)})
