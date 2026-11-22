@@ -23,6 +23,45 @@ require_authenticated = require_roles(["admin", "mentor", "trainee"])
 require_admin = require_roles(["admin"])
 
 
+def _session_is_currently_in_progress(session: dict, now: datetime | None = None) -> bool:
+    """Protect a session whose scheduled time window is currently active."""
+    if session.get("status") == SessionStatus.IN_PROGRESS:
+        return True
+    session_date = session.get("sessionDate")
+    if not isinstance(session_date, datetime):
+        return False
+    now = now or datetime.utcnow()
+    if session_date.tzinfo is not None:
+        now = now.replace(tzinfo=session_date.tzinfo)
+    try:
+        start_hour, start_minute = map(int, str(session.get("startTime", "00:00")).split(":")[:2])
+        end_hour, end_minute = map(int, str(session.get("endTime", "23:59")).split(":")[:2])
+        start_at = session_date.replace(hour=start_hour, minute=start_minute, second=0, microsecond=0)
+        end_at = session_date.replace(hour=end_hour, minute=end_minute, second=0, microsecond=0)
+        return start_at <= now <= end_at
+    except (TypeError, ValueError):
+        return False
+
+
+def _session_is_upcoming(session: dict, now: datetime | None = None) -> bool:
+    if session.get("status") not in (SessionStatus.SCHEDULED.value, "upcoming"):
+        return False
+    if _session_is_currently_in_progress(session, now):
+        return False
+    session_date = session.get("sessionDate")
+    if not isinstance(session_date, datetime):
+        return False
+    now = now or datetime.utcnow()
+    if session_date.tzinfo is not None:
+        now = now.replace(tzinfo=session_date.tzinfo)
+    try:
+        start_hour, start_minute = map(int, str(session.get("startTime", "00:00")).split(":")[:2])
+        starts_at = session_date.replace(hour=start_hour, minute=start_minute, second=0, microsecond=0)
+        return starts_at > now
+    except (TypeError, ValueError):
+        return session_date > now
+
+
 async def get_batch_roster(db: AsyncIOMotorDatabase, trainee_ids: list, include_dropped_out: bool = True) -> list:
     """Build a JSON-safe trainee snapshot in batch order."""
     object_ids = []
@@ -690,48 +729,68 @@ async def get_attendance_report(
         )
 
 
+@router.post("/{session_id}/cancel")
+async def cancel_session(
+    session_id: str,
+    current_user: dict = Depends(require_mentor),
+    db: AsyncIOMotorDatabase = Depends(get_database)
+):
+    """Cancel a future scheduled session while retaining its history."""
+    try:
+        try:
+            session_oid = ObjectId(session_id)
+        except Exception:
+            raise HTTPException(status_code=404, detail="Session not found")
+        session = await db.sessions.find_one({"_id": session_oid})
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        if str(session.get("mentorId")) != current_user["id"]:
+            raise HTTPException(status_code=403, detail="Access denied")
+        batch = await db.batches.find_one({"_id": session.get("batchId")})
+        if batch:
+            await ensure_mentor_cohort_access(db, current_user, str(batch.get("cohortId")))
+        if not _session_is_upcoming(session):
+            raise HTTPException(status_code=400, detail="Only future scheduled sessions can be cancelled")
+        await db.sessions.update_one(
+            {"_id": session_oid, "status": {"$in": [SessionStatus.SCHEDULED.value, "upcoming"]}},
+            {"$set": {"status": SessionStatus.CANCELLED.value, "updatedAt": datetime.utcnow(),
+                      "cancelledAt": datetime.utcnow(), "cancelledBy": current_user["id"]}}
+        )
+        return {"success": True, "message": "Session cancelled successfully", "sessionId": session_id, "status": SessionStatus.CANCELLED.value}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to cancel session: {str(e)}")
+
+
 @router.delete("/{session_id}")
 async def delete_session(
     session_id: str,
     current_user: dict = Depends(require_mentor),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
-    """Delete a session (only scheduled sessions)"""
+    """Delete only a future scheduled session and its attendance records."""
     try:
-        session = await db.sessions.find_one({"_id": ObjectId(session_id)})
+        try:
+            session_oid = ObjectId(session_id)
+        except Exception:
+            raise HTTPException(status_code=404, detail="Session not found")
+        session = await db.sessions.find_one({"_id": session_oid})
         if not session:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Session not found"
-            )
-        # Check ownership
-        if str(session["mentorId"]) != current_user["id"] and current_user.get("role") != "admin":
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied"
-            )
-        batch = await db.batches.find_one({"_id": session["batchId"]})
+            raise HTTPException(status_code=404, detail="Session not found")
+        if str(session.get("mentorId")) != current_user["id"]:
+            raise HTTPException(status_code=403, detail="Access denied")
+        batch = await db.batches.find_one({"_id": session.get("batchId")})
         if batch:
             await ensure_mentor_cohort_access(db, current_user, str(batch.get("cohortId")))
-        
-        # Only allow deleting scheduled sessions
-        if session.get("status") != SessionStatus.SCHEDULED:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Can only delete scheduled sessions"
-            )
-        
-        await db.sessions.delete_one({"_id": ObjectId(session_id)})
-        
-        return {
-            "success": True,
-            "message": "Session deleted successfully"
-        }
-        
+        if not _session_is_upcoming(session):
+            raise HTTPException(status_code=400, detail="Only future scheduled sessions can be deleted. Past, in-progress, completed, or cancelled sessions cannot be deleted.")
+
+        await db.attendance.delete_many({"sessionId": {"$in": [session_oid, session_id]}})
+        await db.sessions.delete_one({"_id": session_oid})
+        return {"success": True, "message": "Session deleted successfully"}
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to delete session: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to delete session: {str(e)}")
+
