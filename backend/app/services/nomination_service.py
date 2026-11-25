@@ -6,7 +6,10 @@ from fastapi import HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.core.security import get_password_hash, generate_temporary_password
 from app.schemas.nominees import MentorNomineeCreate, TraineeNomineeCreate
-from app.services.identity_service import claim_person_identity, release_person_identity
+from app.services.identity_service import (
+    claim_person_identity, release_person_identity, update_person_identity,
+    rollback_identity_update, release_stale_identity_claims,
+)
 
 KIND_COLLECTION = {"mentor": "mentors", "trainee": "trainees"}
 
@@ -129,6 +132,121 @@ class NominationService:
     async def nominate_trainee(db: AsyncIOMotorDatabase, data: TraineeNomineeCreate, nominated_by_user: dict) -> dict:
         doc = await NominationService._create_nominee(db, "trainee", data, nominated_by_user)
         return NominationService._my_view(doc, "trainee")
+
+    @staticmethod
+    async def update_nominee(
+        db: AsyncIOMotorDatabase,
+        kind: str,
+        nominee_id: str,
+        data,
+        *,
+        nominator_id: Optional[str] = None,
+        actor: Optional[dict] = None,
+    ) -> dict:
+        """Edit an existing nominee's profile details in place.
+
+        `nominator_id` restricts the edit to nominations submitted by that
+        nominator (a record owned by someone else is reported as not found, so
+        ids cannot be probed). Admins pass None.
+
+        Only profile fields are written. Status, cohort / mentor assignment,
+        nominator, creation date and login linkage are never touched, so the
+        approval / allocation workflow is unaffected.
+        """
+        collection = db[KIND_COLLECTION[kind]]
+        try:
+            oid = ObjectId(nominee_id)
+        except Exception:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Nomination not found",
+                                headers={"code": "NOT_FOUND"})
+        query: dict = {"_id": oid}
+        if nominator_id is not None:
+            query["nominatedBy"] = nominator_id
+        doc = await collection.find_one(query)
+        if not doc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Nomination not found",
+                                headers={"code": "NOT_FOUND"})
+
+        sent = data.model_dump(exclude_unset=True)
+        changes: dict = {}
+        if "name" in sent and sent["name"] is not None:
+            changes["name"] = sent["name"].strip()
+        if "email" in sent and sent["email"] is not None:
+            changes["email"] = str(sent["email"]).strip().lower()
+        if "employeeId" in sent and sent["employeeId"] is not None:
+            changes["employeeId"] = sent["employeeId"].strip()
+        for field in ("department", "location", "timezone", "experience"):
+            if field in sent:
+                value = sent[field]
+                changes[field] = value.strip() if isinstance(value, str) and value.strip() else (
+                    "" if field == "department" else None
+                )
+        if "skills" in sent:
+            changes["skills"] = [skill.strip() for skill in (sent["skills"] or []) if skill and skill.strip()]
+
+        if kind == "trainee":
+            for field, label in (("location", "Location"), ("timezone", "Time zone")):
+                if field in changes and not changes[field]:
+                    raise HTTPException(status_code=422, detail=f"{label} is required for trainees")
+
+        # Drop no-op changes so an unchanged save never rewrites anything.
+        changes = {k: v for k, v in changes.items() if doc.get(k) != v and not (doc.get(k) in (None, "") and v in (None, ""))}
+        if not changes:
+            return NominationService._my_view(doc, kind)
+
+        old_email = str(doc.get("email") or "")
+        old_employee = str(doc.get("employeeId") or "")
+        new_email = changes.get("email", old_email)
+        new_employee = changes.get("employeeId", old_employee)
+        identity_changed = (
+            new_email.strip().casefold() != old_email.strip().casefold()
+            or new_employee.strip().casefold() != old_employee.strip().casefold()
+        )
+
+        identity = {"added": [], "stale": []}
+        if identity_changed:
+            identity = await update_person_identity(
+                db, owner_type=kind, owner_id=str(oid), email=new_email, employee_id=new_employee,
+            )
+
+        linked_user = None
+        linked_user_changes: dict = {}
+        try:
+            # A mentor whose login was already activated has a users record that
+            # mirrors name / email; keep it in step so login keeps working.
+            if kind == "mentor" and doc.get("userId"):
+                try:
+                    linked_user = await db.users.find_one({"_id": ObjectId(str(doc["userId"]))})
+                except Exception:
+                    linked_user = None
+                if linked_user:
+                    for field in ("name", "email"):
+                        if field in changes and linked_user.get(field) != changes[field]:
+                            linked_user_changes[field] = changes[field]
+                    if linked_user_changes:
+                        await db.users.update_one({"_id": linked_user["_id"]}, {"$set": linked_user_changes})
+
+            update = dict(changes)
+            update["updatedAt"] = datetime.now(timezone.utc)
+            if actor:
+                update["updatedBy"] = actor["id"]
+                update["updatedByRole"] = actor.get("role")
+            result = await collection.update_one(query, {"$set": update})
+            if result.matched_count != 1:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Nomination not found",
+                                    headers={"code": "NOT_FOUND"})
+        except Exception:
+            await rollback_identity_update(db, str(oid), identity["added"])
+            if linked_user and linked_user_changes:
+                await db.users.update_one(
+                    {"_id": linked_user["_id"]},
+                    {"$set": {field: linked_user.get(field) for field in linked_user_changes}},
+                )
+            raise
+
+        await release_stale_identity_claims(db, str(oid), identity["stale"])
+        updated = await collection.find_one({"_id": oid})
+        return NominationService._my_view(updated, kind)
 
     @staticmethod
     async def list_my_nominees(

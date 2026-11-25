@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional, List
 from datetime import datetime
 
@@ -111,6 +111,37 @@ class MyNomineeResponse(BaseModel):
     experience: Optional[str] = None
     skills: Optional[List[str]] = []
     createdAt: datetime
+
+class _NomineeUpdateBase(BaseModel):
+    """Editable nominee profile fields. Only fields that are sent are changed.
+
+    System fields (id, nominator, status, cohort/mentor assignment, createdAt)
+    are deliberately absent: unknown keys in a request are ignored.
+    """
+    name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    employeeId: Optional[str] = Field(default=None, max_length=64)
+    department: Optional[str] = None
+    location: Optional[str] = None
+    timezone: Optional[str] = None
+    experience: Optional[str] = None
+    skills: Optional[List[str]] = None
+
+    @field_validator("name", "employeeId")
+    @classmethod
+    def _not_blank(cls, value):
+        if value is not None and not value.strip():
+            raise ValueError("This field cannot be blank")
+        return value
+
+
+class MentorNomineeUpdate(_NomineeUpdateBase):
+    pass
+
+
+class TraineeNomineeUpdate(_NomineeUpdateBase):
+    pass
+
 
 class AllocateRequest(BaseModel):
     ids: List[str]

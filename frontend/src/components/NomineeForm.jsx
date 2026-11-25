@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { UserPlus } from 'lucide-react';
+import { Save, UserPlus } from 'lucide-react';
 import { cities, timezonesByCountry } from '../data/cities';
 
 const inputClass =
@@ -9,18 +9,27 @@ const labelClass = 'block text-xs font-bold text-slate-700 uppercase tracking-wi
 /**
  * Nomination form for one mentor or trainee.
  * No cohort is involved: nominees go into a pool that an admin adds to cohorts.
- * `onSubmit(payload)` must return a promise; the form clears itself when it resolves.
+ * `onSubmit(payload)` must return a promise; in create mode the form clears itself when it resolves.
+ *
+ * Edit mode: pass `initialValues` (an existing nominee) and optionally `onCancel`. The form is
+ * pre-filled, keeps its values after saving, and the parent decides when to close it.
  */
-export function NomineeForm({ kind, onSubmit, isPending = false }) {
+export function NomineeForm({ kind, onSubmit, isPending = false, initialValues = null, onCancel = null }) {
   const isTrainee = kind === 'trainee';
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [employeeId, setEmployeeId] = useState('');
-  const [location, setLocation] = useState('');
-  const [timezone, setTimezone] = useState('');
+  const isEdit = !!initialValues;
+  const [name, setName] = useState(initialValues?.name || '');
+  const [email, setEmail] = useState(initialValues?.email || '');
+  const [employeeId, setEmployeeId] = useState(initialValues?.employeeId || '');
+  const [location, setLocation] = useState(initialValues?.location || '');
+  const [timezone, setTimezone] = useState(initialValues?.timezone || '');
 
   const selectedCity = cities.find(({ city, country }) => location === `${city}, ${country}`);
-  const timezoneOptions = selectedCity ? timezonesByCountry[selectedCity.country] : [];
+  // Older records may hold a location / time zone that is not in the current lists;
+  // keep their value selectable so editing other fields never silently wipes it.
+  const locationIsLegacy = !!location && !selectedCity;
+  const timezoneOptions = selectedCity
+    ? timezonesByCountry[selectedCity.country]
+    : (timezone ? [{ value: timezone, label: timezone }] : []);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -33,6 +42,7 @@ export function NomineeForm({ kind, onSubmit, isPending = false }) {
     };
     try {
       await onSubmit(payload);
+      if (isEdit) return;
       setName('');
       setEmail('');
       setEmployeeId('');
@@ -71,6 +81,7 @@ export function NomineeForm({ kind, onSubmit, isPending = false }) {
           className={inputClass}
         >
           <option value="">Select a city</option>
+          {locationIsLegacy && <option value={location}>{location}</option>}
           {['India', 'USA'].map((country) => (
             <optgroup key={country} label={country}>
               {cities.filter((c) => c.country === country).map(({ city }) => (
@@ -86,23 +97,39 @@ export function NomineeForm({ kind, onSubmit, isPending = false }) {
           required={isTrainee}
           value={timezone}
           onChange={(e) => setTimezone(e.target.value)}
-          disabled={!selectedCity}
+          disabled={!selectedCity && !locationIsLegacy}
           className={inputClass}
         >
-          <option value="">{selectedCity ? 'Select a time zone' : 'Select a city first'}</option>
+          <option value="">{selectedCity || locationIsLegacy ? 'Select a time zone' : 'Select a city first'}</option>
           {timezoneOptions.map(({ value, label }) => (
             <option key={value} value={value}>{label}</option>
           ))}
         </select>
       </div>
-      <button
-        type="submit"
-        disabled={isPending}
-        className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm flex items-center justify-center gap-1.5 disabled:opacity-50 transition-all"
-      >
-        <UserPlus className="w-4 h-4" />
-        <span>{isPending ? 'Submitting…' : `Submit ${isTrainee ? 'Trainee' : 'Mentor'} Nomination`}</span>
-      </button>
+      <div className={isEdit ? 'flex flex-col-reverse gap-2 sm:flex-row sm:justify-end' : ''}>
+        {isEdit && onCancel && (
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isPending}
+            className="py-2.5 px-4 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+        )}
+        <button
+          type="submit"
+          disabled={isPending}
+          className={`${isEdit ? 'sm:w-auto' : 'w-full'} py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm flex items-center justify-center gap-1.5 disabled:opacity-50 transition-all`}
+        >
+          {isEdit ? <Save className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
+          <span>
+            {isEdit
+              ? (isPending ? 'Saving…' : 'Save changes')
+              : (isPending ? 'Submitting…' : `Submit ${isTrainee ? 'Trainee' : 'Mentor'} Nomination`)}
+          </span>
+        </button>
+      </div>
     </form>
   );
 }

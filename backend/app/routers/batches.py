@@ -611,49 +611,58 @@ async def remove_trainees_from_batch(
 @router.delete("/{batch_id}")
 async def delete_batch(
     batch_id: str,
+    confirm_completed_sessions: bool = Query(False),
     current_user: dict = Depends(require_mentor),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
-    """Delete a batch"""
+    """Delete a mentor-owned batch and its sessions after explicit completed-session confirmation."""
     try:
-        batch = await db.batches.find_one({"_id": ObjectId(batch_id)})
+        try:
+            batch_oid = ObjectId(batch_id)
+        except Exception:
+            raise HTTPException(status_code=404, detail="Batch not found")
+        batch = await db.batches.find_one({"_id": batch_oid})
         if not batch:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Batch not found"
-            )
+            raise HTTPException(status_code=404, detail="Batch not found")
         if current_user.get("role") == "mentor":
             await ensure_mentor_cohort_access(db, current_user, str(batch.get("cohortId")))
-        
-        # Check ownership
-        if str(batch["mentorId"]) != current_user["id"] and current_user.get("role") != "admin":
+        if str(batch.get("mentorId")) != current_user["id"]:
+            raise HTTPException(status_code=403, detail="Access denied")
+
+        # Support both BSON ObjectId and legacy string batch references.
+        sessions = await db.sessions.find({"batchId": {"$in": [batch_oid, batch_id]}}).to_list(length=None)
+        in_progress = [item for item in sessions if item.get("status") == "in_progress"]
+        if in_progress:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied"
+                status_code=409,
+                detail={"code": "BATCH_HAS_IN_PROGRESS_SESSIONS", "message": "This batch has a session in progress. Finish it before deleting the batch.", "inProgressSessions": len(in_progress)}
             )
-        
-        # Keep session history intact: a group can be deleted only if no
-        # training sessions have been created for it.
-        if await db.sessions.count_documents({"batchId": ObjectId(batch_id)}):
+
+        completed = [item for item in sessions if item.get("status") == "completed"]
+        if completed and not confirm_completed_sessions:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="This batch has training sessions and cannot be deleted"
+                status_code=409,
+                detail={"code": "BATCH_HAS_COMPLETED_SESSIONS", "message": f"This batch contains {len(completed)} completed session(s). Confirm that you also want to permanently delete their history.", "completedSessions": len(completed), "otherSessions": len(sessions) - len(completed)}
             )
-        
-        await db.batches.delete_one({"_id": ObjectId(batch_id)})
-        
+
+        session_oids = [item["_id"] for item in sessions]
+        session_refs = [ref for oid in session_oids for ref in (oid, str(oid))]
+        # Attendance is stored both embedded in sessions and, for legacy data,
+        # in a separate collection. Remove dependent records before parent docs.
+        if session_refs:
+            await db.attendance.delete_many({"sessionId": {"$in": session_refs}})
+            await db.sessions.delete_many({"_id": {"$in": session_oids}, "batchId": {"$in": [batch_oid, batch_id]}})
+        await db.batches.delete_one({"_id": batch_oid, "mentorId": batch.get("mentorId")})
         return {
             "success": True,
-            "message": "Batch deleted successfully"
+            "message": "Batch and its associated sessions deleted successfully",
+            "deletedSessions": len(sessions),
+            "deletedCompletedSessions": len(completed),
         }
-        
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to delete batch: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to delete batch: {str(e)}")
 
 
 @router.get("/{batch_id}/analytics", response_model=BatchAnalytics)
