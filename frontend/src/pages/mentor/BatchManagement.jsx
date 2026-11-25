@@ -6,11 +6,20 @@ import { useToast } from '../../context/ToastContext';
 import { Card } from '../../components/Card';
 import { Modal } from '../../components/Modal';
 import { DataTable, PersonCell } from '../../components/DataTable';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Ban, Trash2 } from 'lucide-react';
 import { requireArrayResponse } from '../../utils/arrayResponse';
 import '../../styles/BatchManagement.css';
 
 const MISSING_LOCATION = '__missing_location__';
+
+const isFutureScheduledSession = (session) => {
+  if (!['scheduled', 'upcoming'].includes(String(session.status || '').toLowerCase())) return false;
+  const date = new Date(session.sessionDate);
+  if (Number.isNaN(date.getTime())) return false;
+  const [hours, minutes] = String(session.startTime || '00:00').split(':').map(Number);
+  date.setHours(hours || 0, minutes || 0, 0, 0);
+  return date.getTime() > Date.now();
+};
 
 // Table columns shared by both "choose trainees" pickers
 const pickerColumns = [
@@ -247,15 +256,60 @@ export default function BatchManagement() {
   });
 
   const deleteBatchMutation = useMutation({
-    mutationFn: async (batchId) => api.delete(`/batches/${batchId}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['mentorBatches'] });
-      queryClient.invalidateQueries({ queryKey: ['adminCohortSessionOverview', cohortId] });
+    mutationFn: async (batchId) => {
+      try {
+        return await api.delete(`/batches/${batchId}`);
+      } catch (error) {
+        const detail = error.response?.data?.detail;
+        if (error.response?.status === 409 && detail?.code === 'BATCH_HAS_COMPLETED_SESSIONS') {
+          const count = detail.completedSessions || 0;
+          const confirmed = window.confirm(`${detail.message || `This batch has ${count} completed session(s).`}\n\nIf you continue, the completed session records and their attendance history will also be permanently deleted. Do you want to continue?`);
+          if (confirmed) return api.delete(`/batches/${batchId}?confirm_completed_sessions=true`);
+        }
+        throw error;
+      }
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['mentorBatches'] }),
+        queryClient.invalidateQueries({ queryKey: ['batchSessions'] }),
+        queryClient.invalidateQueries({ queryKey: ['mentorAssignedTraineesForBatches'] }),
+        queryClient.invalidateQueries({ queryKey: ['adminCohortSessionOverview', cohortId] }),
+      ]);
       setShowDetailModal(false);
       setSelectedBatch(null);
-      showToast('Batch deleted', 'success');
+      showToast('Batch and its associated sessions deleted', 'success');
     },
-    onError: (error) => showToast(error.response?.data?.detail || 'Failed to delete batch', 'error'),
+    onError: (error) => {
+      const detail = error.response?.data?.detail;
+      showToast(typeof detail === 'string' ? detail : detail?.message || 'Failed to delete batch', 'error');
+    },
+  });
+
+  const cancelSessionMutation = useMutation({
+    mutationFn: async (session) => api.post(`/sessions/${session.id}/cancel`),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['batchSessions', selectedBatch?.id] }),
+        queryClient.invalidateQueries({ queryKey: ['sessionDetails'] }),
+        queryClient.invalidateQueries({ queryKey: ['adminCohortSessionOverview', cohortId] }),
+      ]);
+      showToast('Session cancelled successfully', 'success');
+    },
+    onError: (error) => showToast(error.response?.data?.detail || 'Failed to cancel session', 'error'),
+  });
+
+  const deleteSessionMutation = useMutation({
+    mutationFn: async (session) => api.delete(`/sessions/${session.id}`),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['batchSessions', selectedBatch?.id] }),
+        queryClient.invalidateQueries({ queryKey: ['sessionDetails'] }),
+        queryClient.invalidateQueries({ queryKey: ['adminCohortSessionOverview', cohortId] }),
+      ]);
+      showToast('Session deleted successfully', 'success');
+    },
+    onError: (error) => showToast(error.response?.data?.detail || 'Failed to delete session', 'error'),
   });
 
   const createSessionMutation = useMutation({
@@ -348,7 +402,7 @@ export default function BatchManagement() {
 
   const handleDeleteBatch = () => {
     if (!selectedBatch) return;
-    if (window.confirm(`Delete "${selectedBatch.name}"? This cannot be undone.`)) {
+    if (window.confirm(`Delete "${selectedBatch.name}"? All sessions associated with this batch will also be deleted. If completed sessions exist, you will receive a separate confirmation before their history is removed. This cannot be undone.`)) {
       deleteBatchMutation.mutate(selectedBatch.id);
     }
   };
@@ -683,10 +737,41 @@ export default function BatchManagement() {
                                 {session.location ? ` · ${session.location}` : ''}
                               </span>
                             )}
+                            <span className={`inline-flex w-fit rounded-full px-2 py-1 text-xs font-semibold ${session.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : session.status === 'cancelled' ? 'bg-rose-100 text-rose-700' : 'bg-blue-100 text-blue-700'}`}>
+                              {String(session.status || 'scheduled').replaceAll('_', ' ')}
+                            </span>
                             {session.meetingLink && (
                               <a href={session.meetingLink} target="_blank" rel="noopener noreferrer" className="batch-session-link" onClick={(event) => event.stopPropagation()}>
                                 Open meeting link
                               </a>
+                            )}
+                            {isFutureScheduledSession(session) && (
+                              <div className="mt-2 flex flex-wrap gap-2" onClick={(event) => event.stopPropagation()}>
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary"
+                                  disabled={cancelSessionMutation.isPending || deleteSessionMutation.isPending}
+                                  onClick={() => {
+                                    if (window.confirm(`Cancel the upcoming session "${session.title}"? It will remain visible in session history as Cancelled.`)) {
+                                      cancelSessionMutation.mutate(session);
+                                    }
+                                  }}
+                                >
+                                  <Ban className="mr-1 h-4 w-4" /> Cancel Session
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-danger"
+                                  disabled={cancelSessionMutation.isPending || deleteSessionMutation.isPending}
+                                  onClick={() => {
+                                    if (window.confirm(`Permanently delete the upcoming session "${session.title}"? This cannot be undone.`)) {
+                                      deleteSessionMutation.mutate(session);
+                                    }
+                                  }}
+                                >
+                                  <Trash2 className="mr-1 h-4 w-4" /> Delete Session
+                                </button>
+                              </div>
                             )}
                           </div>
                         </article>
@@ -817,11 +902,11 @@ export default function BatchManagement() {
                     className="btn btn-danger"
                     onClick={handleDeleteBatch}
                     disabled={deleteBatchMutation.isPending}
-                    title="Delete this group if it has no training sessions"
+                    title="Delete this batch and its associated sessions"
                   >
                     {deleteBatchMutation.isPending ? 'Deleting...' : 'Delete Batch'}
                   </button>
-                  <span className="batch-delete-note">Groups with training sessions are kept to preserve history.</span>
+                  <span className="batch-delete-note">Upcoming sessions will be removed. If completed sessions exist, you will be asked to confirm permanent deletion of their history.</span>
                 </div>
               </>
             )}

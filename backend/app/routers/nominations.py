@@ -7,6 +7,7 @@ from app.core.deps import require_admin, require_nominator, require_any_authenti
 from app.services.nomination_service import NominationService
 from app.schemas.nominees import (
     MentorNomineeCreate, MentorNomineeResponse, MyNomineeResponse,
+    MentorNomineeUpdate, TraineeNomineeUpdate,
     TraineeNomineeCreate, TraineeNomineeResponse, AllocateRequest,
     MentorCohortsUpdateRequest, TraineeCohortUpdateRequest, MentorAssignCohortsRequest,
 )
@@ -61,6 +62,31 @@ async def list_my_trainees(
 ):
     return await NominationService.list_my_nominees(db, "trainee", current_user, search, page, limit)
 
+@router.put("/nominations/mine/mentors/{mentor_id}", response_model=MyNomineeResponse)
+async def update_my_mentor(
+    mentor_id: str,
+    data: MentorNomineeUpdate,
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    current_user: dict = Depends(require_nominator)
+):
+    """A nominator corrects a mentor they nominated. Other nominators' records are 404."""
+    return await NominationService.update_nominee(
+        db, "mentor", mentor_id, data, nominator_id=current_user["id"], actor=current_user
+    )
+
+
+@router.put("/nominations/mine/trainees/{trainee_id}", response_model=MyNomineeResponse)
+async def update_my_trainee(
+    trainee_id: str,
+    data: TraineeNomineeUpdate,
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    current_user: dict = Depends(require_nominator)
+):
+    """A nominator corrects a trainee they nominated. Other nominators' records are 404."""
+    return await NominationService.update_nominee(
+        db, "trainee", trainee_id, data, nominator_id=current_user["id"], actor=current_user
+    )
+
 # ---------------------------------------------------------------------------
 # Admin endpoints - full nominee list
 # ---------------------------------------------------------------------------
@@ -93,6 +119,28 @@ async def admin_list_trainee_nominees(
 # ---------------------------------------------------------------------------
 # Cohort membership (admin adds nominees to a cohort, then assigns mentors)
 # ---------------------------------------------------------------------------
+
+@router.put("/nominations/mentors/{mentor_id}", response_model=MyNomineeResponse)
+async def admin_update_mentor_details(
+    mentor_id: str,
+    data: MentorNomineeUpdate,
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    current_user: dict = Depends(require_admin)
+):
+    """Admin corrects any mentor nominee's details. Status and cohort assignments are untouched."""
+    return await NominationService.update_nominee(db, "mentor", mentor_id, data, actor=current_user)
+
+
+@router.put("/nominations/trainees/{trainee_id}", response_model=MyNomineeResponse)
+async def admin_update_trainee_details(
+    trainee_id: str,
+    data: TraineeNomineeUpdate,
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    current_user: dict = Depends(require_admin)
+):
+    """Admin corrects any trainee nominee's details. Cohort and mentor assignment are untouched."""
+    return await NominationService.update_nominee(db, "trainee", trainee_id, data, actor=current_user)
+
 
 @router.post("/cohorts/{cohort_id}/mentors/allocate")
 async def allocate_mentors_to_cohort(

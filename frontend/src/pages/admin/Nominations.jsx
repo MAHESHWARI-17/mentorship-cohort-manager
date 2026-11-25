@@ -32,6 +32,7 @@ export function Nominations() {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
   const [editingNominee, setEditingNominee] = useState(null);
+  const [detailsNominee, setDetailsNominee] = useState(null);
   const [selectedCohortIds, setSelectedCohortIds] = useState([]);
   const [selectedNominatorId, setSelectedNominatorId] = useState(null);
   const [detailsTab, setDetailsTab] = useState('mentors');
@@ -42,6 +43,7 @@ export function Nominations() {
     setSearch('');
     setPage(1);
     setEditingNominee(null);
+    setDetailsNominee(null);
   }, [activeTab]);
   useEffect(() => setPage(1), [debouncedSearch, allocation, nominatorFilter, limit]);
 
@@ -121,6 +123,23 @@ export function Nominations() {
     onError: (err) => showToast(err.response?.data?.detail || `Failed to add ${kind}`, 'error'),
   });
 
+  const updateDetailsMutation = useMutation({
+    mutationFn: async ({ id, payload }) => (await api.put(`/nominations/${kind}s/${id}`, payload)).data,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['adminNominees'] });
+      queryClient.invalidateQueries({ queryKey: ['nominatorSubmissions'] });
+      queryClient.invalidateQueries({ queryKey: ['nomineePool'] });
+      queryClient.invalidateQueries({ queryKey: ['cohortMentors'] });
+      queryClient.invalidateQueries({ queryKey: ['cohortTrainees'] });
+      showToast(`${kind === 'trainee' ? 'Trainee' : 'Mentor'} details updated`);
+      setDetailsNominee(null);
+    },
+    onError: (err) => {
+      const detail = err.response?.data?.detail;
+      showToast(typeof detail === 'string' ? detail : `Failed to update ${kind}`, 'error');
+    },
+  });
+
   const openAssignmentEditor = (row) => {
     setEditingNominee(row);
     setSelectedCohortIds(kind === 'mentor' ? (row.cohortIds || []) : (row.cohortId ? [row.cohortId] : []));
@@ -132,13 +151,13 @@ export function Nominations() {
       render: (row) => <div className="min-w-0 space-y-1"><PersonCell primary={row.name} secondary={row.email} /><span className="inline-flex rounded-md bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-600">{row.employeeId || 'No employee ID'}</span></div>,
     },
     {
-      key: 'location', header: 'Location', className: 'w-[15%]', headerClassName: 'w-[15%]',
+      key: 'location', header: 'Location', className: 'w-[14%]', headerClassName: 'w-[14%]',
       render: (row) => <div className="min-w-0"><div className="truncate font-medium text-slate-700">{row.location || '—'}</div>{row.timezone && <div className="truncate text-xs text-slate-400">{row.timezone}</div>}</div>,
     },
     { key: 'nominatorName', header: 'Nominated by', className: 'w-[13%]', headerClassName: 'w-[13%]', render: (row) => <span className="text-sm">{row.nominatorName || 'Platform Administrator'}</span> },
     { key: 'createdAt', header: 'Date nominated', className: 'w-[11%]', headerClassName: 'w-[11%]', render: (row) => <span className="whitespace-nowrap text-sm text-slate-600">{formatDate(row.createdAt)}</span> },
     {
-      key: 'cohorts', header: 'Cohort assignments', className: 'w-[23%]', headerClassName: 'w-[23%]',
+      key: 'cohorts', header: 'Cohort assignments', className: 'w-[19%]', headerClassName: 'w-[19%]',
       render: (row) => {
         const names = row.cohortNames?.length ? row.cohortNames : (row.cohortName ? [row.cohortName] : []);
         if (!names.length) return <Badge variant="draft">Unassigned</Badge>;
@@ -150,8 +169,8 @@ export function Nominations() {
       render: (row) => <button type="button" onClick={() => toggleMentorMutation.mutate({ id: row.id, isActive: !row.isActive })} disabled={toggleMentorMutation.isPending} title={`Click to ${row.isActive ? 'deactivate' : 'activate'} globally`} className={`inline-flex items-center gap-2 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 ${row.isActive ? 'bg-emerald-50 text-emerald-700 hover:bg-rose-50 hover:text-rose-700' : 'bg-rose-50 text-rose-700 hover:bg-emerald-50 hover:text-emerald-700'}`} aria-label={`${row.isActive ? 'Deactivate' : 'Activate'} mentor globally`}><span className={`h-1.5 w-1.5 rounded-full ${row.isActive ? 'bg-emerald-500' : 'bg-rose-500'}`} />{row.isActive ? 'Deactivate' : 'Activate'}</button>,
     },
     {
-      key: 'actions', header: 'Manage', className: 'w-[7%]', headerClassName: 'w-[7%]',
-      render: (row) => <button type="button" onClick={() => openAssignmentEditor(row)} className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-50"><Pencil className="h-3.5 w-3.5" />Edit</button>,
+      key: 'actions', header: 'Manage', className: 'w-[12%]', headerClassName: 'w-[12%]',
+      render: (row) => <div className="flex flex-col items-start"><button type="button" onClick={() => setDetailsNominee(row)} aria-label={`Edit details of ${row.name}`} className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-50"><Pencil className="h-3.5 w-3.5" />Edit details</button><button type="button" onClick={() => openAssignmentEditor(row)} className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-xs font-bold text-indigo-700 hover:bg-indigo-50"><Pencil className="h-3.5 w-3.5" />Edit cohorts</button></div>,
     },
   ] : [
     { key: 'name', header: 'Trainee', render: (row) => <PersonCell primary={row.name} secondary={row.email} /> },
@@ -160,7 +179,7 @@ export function Nominations() {
     { key: 'nominatorName', header: 'Nominated by', render: (row) => <span>{row.nominatorName || 'Platform Administrator'}</span> },
     { key: 'createdAt', header: 'Nominated on', render: (row) => formatDate(row.createdAt) },
     { key: 'allocationStatus', header: 'Cohort', render: (row) => row.cohortId ? <div className="flex max-w-sm flex-wrap gap-1">{(row.cohortNames?.length ? row.cohortNames : [row.cohortName]).filter(Boolean).map((name) => <Badge key={name} variant="active">{name}</Badge>)}</div> : <Badge variant="draft">Not in a cohort</Badge> },
-    { key: 'actions', header: 'Actions', render: (row) => <button type="button" onClick={() => openAssignmentEditor(row)} className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-bold text-indigo-700 hover:text-indigo-900"><Pencil className="h-3.5 w-3.5" />{row.cohortId ? 'Edit cohort' : 'Add to cohort'}</button> },
+    { key: 'actions', header: 'Actions', render: (row) => <div className="flex flex-col items-start gap-1.5"><button type="button" onClick={() => setDetailsNominee(row)} aria-label={`Edit details of ${row.name}`} className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-bold text-emerald-700 hover:text-emerald-900"><Pencil className="h-3.5 w-3.5" />Edit details</button><button type="button" onClick={() => openAssignmentEditor(row)} className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-bold text-indigo-700 hover:text-indigo-900"><Pencil className="h-3.5 w-3.5" />{row.cohortId ? 'Edit cohort' : 'Add to cohort'}</button></div> },
   ];
 
   // ---- nominator accounts ----
@@ -377,6 +396,25 @@ export function Nominations() {
           isPending={addNomineeMutation.isPending}
           onSubmit={(payload) => addNomineeMutation.mutateAsync(payload)}
         />
+      </Modal>
+
+      {/* Edit one nominee's profile details (assignment and status are not touched) */}
+      <Modal
+        isOpen={!!detailsNominee}
+        onClose={() => { if (!updateDetailsMutation.isPending) setDetailsNominee(null); }}
+        title={`Edit ${kind === 'mentor' ? 'mentor' : 'trainee'} details · ${detailsNominee?.name || ''}`}
+        maxWidth="max-w-lg"
+      >
+        {detailsNominee && (
+          <NomineeForm
+            key={detailsNominee.id}
+            kind={kind}
+            initialValues={detailsNominee}
+            isPending={updateDetailsMutation.isPending}
+            onCancel={() => setDetailsNominee(null)}
+            onSubmit={(payload) => updateDetailsMutation.mutateAsync({ id: detailsNominee.id, payload })}
+          />
+        )}
       </Modal>
 
       {/* Edit one nominee's cohort assignment */}
