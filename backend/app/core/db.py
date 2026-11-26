@@ -21,13 +21,21 @@ async def init_indexes():
     db = db_instance.db
     if db is None:
         return
+    from app.services.identity_service import (
+        backfill_existing_person_identity_claims,
+        repair_existing_person_identity_data,
+    )
+    await repair_existing_person_identity_data(db)
+    # Repair may change old claim keys; rebuild this derived collection from
+    # the canonical person records before enforcing its unique index.
+    await db.personIdentityClaims.delete_many({})
+
     # Users email unique index
     await db.users.create_index([("email", pymongo.ASCENDING)], unique=True)
 
     # Cross-role identity claims enforce one email and employee ID per person.
     await db.personIdentityClaims.create_index([("claim", pymongo.ASCENDING)], unique=True)
     await db.personIdentityClaims.create_index([("ownerType", pymongo.ASCENDING), ("ownerId", pymongo.ASCENDING)])
-    from app.services.identity_service import backfill_existing_person_identity_claims
     await backfill_existing_person_identity_claims(db)
     
     # Users temporary password index for first login reset
@@ -45,6 +53,10 @@ async def init_indexes():
     # FeedbackResponses index {traineeId, weekNumber}
     await db.feedbackResponses.create_index(
         [("traineeId", pymongo.ASCENDING), ("weekNumber", pymongo.ASCENDING)],
+        unique=True
+    )
+    await db.mentorEvaluations.create_index(
+        [("traineeId", pymongo.ASCENDING), ("cohortId", pymongo.ASCENDING)],
         unique=True
     )
     

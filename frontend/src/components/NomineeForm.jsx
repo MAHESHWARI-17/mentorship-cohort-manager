@@ -61,11 +61,13 @@ export function NomineeForm({ kind, onSubmit, isPending = false, initialValues =
       </div>
       <div>
         <label className={labelClass}>Email</label>
-        <input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="jordan.scott@example.com" className={inputClass} />
+        <input required type="email" pattern="[^\s@]+@mphasis\.com" title="Use your @mphasis.com email address" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="jordan.scott@mphasis.com" className={inputClass} />
+        <p className="mt-1 text-[11px] text-slate-500">Must end with @mphasis.com</p>
       </div>
       <div>
         <label className={labelClass}>Employee ID</label>
-        <input required value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} placeholder="EMP-305" className={inputClass} />
+        <input required inputMode="numeric" pattern="[0-9]{7}" maxLength={7} title="Enter exactly 7 digits" value={employeeId} onChange={(e) => setEmployeeId(e.target.value.replace(/\D/g, '').slice(0, 7))} placeholder="1234567" className={inputClass} />
+        <p className="mt-1 text-[11px] text-slate-500">Enter a unique 7-digit employee ID</p>
       </div>
       <div>
         <label className={labelClass}>Location{isTrainee ? '' : ' (optional)'}</label>

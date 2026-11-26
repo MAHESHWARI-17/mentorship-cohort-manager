@@ -8,7 +8,7 @@ This document describes the application data model from the backend source. Mong
 - Documents use MongoDB `_id` values, generally `ObjectId`.
 - Some references are represented as strings and some as `ObjectId` values for compatibility with existing API paths.
 - Passwords are stored as bcrypt hashes. Attendance is embedded in session documents.
-- Mentor, trainee, and nominator email addresses and employee IDs are reserved globally through `personIdentityClaims`. Values are trimmed and compared case-insensitively. A mentor profile and its linked login account represent the same person and do not conflict.
+- Mentor, trainee, and nominator records require a unique seven-digit employee ID and an email ending in `@mphasis.com`. Email and employee ID uniqueness is enforced globally through `personIdentityClaims`; values are normalized before comparison. A mentor profile and its linked login account represent the same person and do not conflict. Legacy records are normalized during backend startup.
 
 ## Collections
 
@@ -20,11 +20,11 @@ Login identities for administrators, mentors, and nominators.
 {
   _id: ObjectId,
   name: String,
-  email: String,                   // unique among accounts; person claim is global
+  email: String,                   // unique among accounts; person claim is global for people
   passwordHash: String,
   role: "admin" | "mentor" | "nominator",
   isActive: Boolean,
-  employeeId: String?,             // unique person claim when present
+  employeeId: String?,             // required for people; exactly 7 digits and globally unique
   firstLoginPasswordReset: Boolean?,
   temporaryPassword: String?,      // transitional setup field
   createdAt: Date?, updatedAt: Date?, lastLoginAt: Date?
@@ -38,7 +38,7 @@ One document per normalized email or employee ID. The unique `claim` index preve
 ```js
 {
   _id: ObjectId,
-  claim: "email:person@example.com" | "employeeId:emp-123", // unique, normalized
+  claim: "email:person@mphasis.com" | "employeeId:1234567", // unique, normalized
   ownerType: "mentor" | "trainee" | "nominator" | "user",
   ownerId: String
 }
@@ -209,6 +209,81 @@ Reusable feedback templates and their cohort-specific copies.
 
 There is a unique index on `(traineeId, weekNumber)`.
 
+### `mentorEvaluations`
+
+One leadership evaluation per trainee and cohort. A mentor may update their existing evaluation. The backend permits only the trainee's assigned mentor to submit it; admins can read evaluations for their cohorts.
+
+```js
+{
+  _id: ObjectId,
+  traineeId: String,
+  cohortId: String,
+  mentorId: String,
+  mentorUserId: String,
+  mentorName: String?,
+  mentorEmail: String?,
+  traineeName: String?,
+  traineeEmployeeId: String?,
+  cohortName: String?,
+  competencyScores: {                 // exactly five ratings, each integer 1–5
+    problemDiscovery: Number,
+    ownership: Number,
+    solutionQuality: Number,
+    communication: Number,
+    leadershipDefense: Number
+  },
+  behaviorScores: {                   // exactly six ratings, each integer 1–5
+    customerObsession: Number,
+    biasForAction: Number,
+    ownership: Number,
+    systemsThinking: Number,
+    learningAgility: Number,
+    executivePresence: Number
+  },
+  strengths: String,
+  growthAreas: String,
+  recommendation: "ready_now" | "ready_with_coaching" | "not_yet_ready",
+  competencyAverage: Number,
+  behaviorAverage: Number,
+  attendance: {
+    sessionsMarked: Number,
+    sessionsAttended: Number,         // present + late
+    attendanceRate: Number,           // percentage, 0–100
+    present: Number,
+    late: Number,
+    absent: Number,
+    excused: Number
+  },
+  scoreSummary: {
+    competencyPoints: Number,         // maximum 60
+    behaviorPoints: Number,           // maximum 30
+    attendancePoints: Number,         // maximum 10
+    totalScore: Number,               // maximum 100
+    maxScore: 100
+  },
+  submittedAt: Date,
+  createdAt: Date,
+  updatedAt: Date
+}
+```
+
+The unique index on `(traineeId, cohortId)` prevents duplicate evaluations. The score is calculated as:
+
+```text
+competencyAverage = sum of the five competency ratings / 5
+competencyPoints  = ((competencyAverage - 1) / 4) × 60
+
+behaviorAverage   = sum of the six behavior ratings / 6
+behaviorPoints    = ((behaviorAverage - 1) / 4) × 30
+
+attendanceRate    = (present + late) / sessionsMarked
+attendancePoints  = attendanceRate × 10
+
+totalScore        = competencyPoints + behaviorPoints + attendancePoints
+```
+
+Attendance contributes 10% of the total (below the 15% ceiling). Only completed sessions with recorded attendance are counted. An unmarked session does not enter the denominator; if no attendance has been marked, attendance contributes zero. `present` and `late` count as attended; `absent` and `excused` do not. Each rating is 1–5, linearly mapped so that 1 is zero points and 5 is the category maximum. Values are rounded to two decimal places.
+
 ### `talentnextCourses` and `talentnextProgress`
 
 ```js
@@ -283,7 +358,7 @@ A scheduled mentor meeting for one batch. **Attendance is stored inside the sess
   status: "scheduled" | "in_progress" | "completed" | "cancelled",
   attendance: [{
     traineeId: String,
-    status: "present" | "absent",
+    status: "present" | "late" | "absent" | "excused",
     markedAt: Date,
     markedBy: String
   }],
@@ -309,6 +384,6 @@ Attendance is editable after it has been submitted. A session can hold multiple 
 - `batches` → `sessions`: session documents reference `batches._id`.
 - `sessions` → attendance: embedded in `sessions.attendance[]`.
 
-Indexes initialized by the backend include unique `users.email`, unique `personIdentityClaims.claim`, unique `progress.traineeId`, unique `feedbackResponses.(traineeId, weekNumber)`, mentor lookup indexes by `userId` and `cohortIds`, batch lookup indexes, mentor/trainee cohort-location-timezone indexes, and session batch/date indexes.
+Indexes initialized by the backend include unique `users.email`, unique `personIdentityClaims.claim`, unique `progress.traineeId`, unique `feedbackResponses.(traineeId, weekNumber)`, unique `mentorEvaluations.(traineeId, cohortId)`, mentor lookup indexes by `userId` and `cohortIds`, batch lookup indexes, mentor/trainee cohort-location-timezone indexes, and session batch/date indexes.
 
 See [DATABASE_SCHEMA_DIAGRAM.md](DATABASE_SCHEMA_DIAGRAM.md) for the entity relationship diagram.

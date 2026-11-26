@@ -4,6 +4,7 @@ from fastapi import HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.schemas.progress import ProgressUpdateRequest
 from app.core.deps import ensure_mentor_cohort_access
+from app.services.evaluation_service import EvaluationService
 
 class ProgressService:
     @staticmethod
@@ -189,6 +190,11 @@ class ProgressService:
             fb.pop("_id", None)
             feedback_history.append(fb)
 
+        mentor_evaluation = await EvaluationService.get_for_trainee(db, trainee_id, cohort_id)
+        evaluation_attendance = await EvaluationService._attendance_for_trainee(
+            db, {"_id": ObjectId(trainee_id)}, cohort_id
+        )
+
         # Fetch TalentNext courses for the cohort
         talent_next_courses = []
         if cohort and cohort.get("talentnextCourses"):
@@ -246,6 +252,8 @@ class ProgressService:
             "progress": progress,
             "feedbackForm": feedback_form,
             "feedbackHistory": feedback_history,
+            "mentorEvaluation": mentor_evaluation,
+            "evaluationAttendance": evaluation_attendance,
             "talentnextCourses": talent_next_courses,
             "talentnextProgress": talent_next_progress
         }

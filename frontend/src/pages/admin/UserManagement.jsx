@@ -20,6 +20,7 @@ export default function UserManagement() {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
+    employeeId: '',
     role: 'mentor',
     location: '',
     timezone: '',
@@ -47,7 +48,7 @@ export default function UserManagement() {
   const handleCreateUser = async (e) => {
     e.preventDefault();
 
-    if (!formData.name || !formData.email || !formData.role) {
+    if (!formData.name || !formData.email || !formData.employeeId || !formData.role) {
       showToast('Please fill in all required fields', 'error');
       return;
     }
@@ -63,6 +64,7 @@ export default function UserManagement() {
       setFormData({
         name: '',
         email: '',
+        employeeId: '',
         role: 'mentor',
         location: '',
         timezone: '',
@@ -281,7 +283,25 @@ export default function UserManagement() {
               type="email"
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              placeholder="user@example.com"
+              pattern="[^\s@]+@mphasis\.com"
+              title="Use an @mphasis.com email address"
+              placeholder="user@mphasis.com"
+              required
+            />
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="employeeId">Employee ID *</label>
+            <input
+              id="employeeId"
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]{7}"
+              maxLength={7}
+              title="Enter exactly 7 digits"
+              value={formData.employeeId}
+              onChange={(e) => setFormData({ ...formData, employeeId: e.target.value.replace(/\D/g, '').slice(0, 7) })}
+              placeholder="1234567"
               required
             />
           </div>

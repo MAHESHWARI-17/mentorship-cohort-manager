@@ -5,6 +5,7 @@ This script is destructive: it clears the application collections first.
 """
 import asyncio
 import copy
+import re
 from datetime import datetime, timedelta, timezone
 
 from bson import ObjectId
@@ -16,6 +17,13 @@ from app.core.security import get_password_hash
 
 def oid() -> ObjectId:
     return ObjectId()
+
+
+def validate_seed_identity(email: str, employee_id: str) -> None:
+    if not re.fullmatch(r"\d{7}", str(employee_id or "")):
+        raise ValueError(f"Seed employee ID must be exactly 7 digits: {employee_id}")
+    if not str(email or "").lower().endswith("@mphasis.com"):
+        raise ValueError(f"Seed employee email must end with @mphasis.com: {email}")
 
 
 async def run_seed() -> None:
@@ -64,8 +72,8 @@ async def run_seed() -> None:
             {
                 "_id": nominator_id,
                 "name": "Demo Nominator",
-                "email": "nominator@example.com",
-                "employeeId": "EMP-NOM-01",
+                "email": "nominator@mphasis.com",
+                "employeeId": "1000001",
                 "passwordHash": get_password_hash("Nominator@123"),
                 "role": "nominator",
                 "isActive": True,
@@ -75,8 +83,8 @@ async def run_seed() -> None:
             {
                 "_id": nominator_id_2,
                 "name": "Demo Nominator West",
-                "email": "nominator.west@example.com",
-                "employeeId": "EMP-NOM-02",
+                "email": "nominator.west@mphasis.com",
+                "employeeId": "1000002",
                 "passwordHash": get_password_hash("Nominator@123"),
                 "role": "nominator",
                 "isActive": True,
@@ -86,11 +94,11 @@ async def run_seed() -> None:
         ]
 
         mentors_data = [
-            {"name": "Sarah Jenkins", "email": "sarah.jenkins@example.com", "employeeId": "EMP-MTR-01", "department": "Frontend Engineering", "location": "Bengaluru, India", "timezone": "Asia/Kolkata"},
-            {"name": "David Chen", "email": "david.chen@example.com", "employeeId": "EMP-MTR-02", "department": "Backend Core", "location": "San Francisco, USA", "timezone": "America/Los_Angeles"},
-            {"name": "Elena Rodriguez", "email": "elena.rodriguez@example.com", "employeeId": "EMP-MTR-03", "department": "Data & Machine Learning", "location": "New York, USA", "timezone": "America/New_York"},
-            {"name": "Priya Nair", "email": "priya.nair@example.com", "employeeId": "EMP-MTR-04", "department": "Platform Engineering", "location": "Bengaluru, India", "timezone": "Asia/Kolkata"},
-            {"name": "Marcus Lee", "email": "marcus.lee@example.com", "employeeId": "EMP-MTR-05", "department": "Cloud Infrastructure", "location": "Austin, USA", "timezone": "America/Chicago", "isActive": False},
+            {"name": "Sarah Jenkins", "email": "sarah.jenkins@mphasis.com", "employeeId": "2000001", "department": "Frontend Engineering", "location": "Bengaluru, India", "timezone": "Asia/Kolkata"},
+            {"name": "David Chen", "email": "david.chen@mphasis.com", "employeeId": "2000002", "department": "Backend Core", "location": "San Francisco, USA", "timezone": "America/Los_Angeles"},
+            {"name": "Elena Rodriguez", "email": "elena.rodriguez@mphasis.com", "employeeId": "2000003", "department": "Data & Machine Learning", "location": "New York, USA", "timezone": "America/New_York"},
+            {"name": "Priya Nair", "email": "priya.nair@mphasis.com", "employeeId": "2000004", "department": "Platform Engineering", "location": "Bengaluru, India", "timezone": "Asia/Kolkata"},
+            {"name": "Marcus Lee", "email": "marcus.lee@mphasis.com", "employeeId": "2000005", "department": "Cloud Infrastructure", "location": "Austin, USA", "timezone": "America/Chicago", "isActive": False},
         ]
         mentor_profiles = []
         mentor_users = []
@@ -328,14 +336,14 @@ async def run_seed() -> None:
             })
 
         trainees_data = [
-            ("Liam Scott", "liam.scott@example.com", "EMP-TRN-101", "Frontend UI", "Bengaluru, India", "Asia/Kolkata", 0),
-            ("Sophia Martinez", "sophia.martinez@example.com", "EMP-TRN-102", "Web Platforms", "Chennai, India", "Asia/Kolkata", 0),
-            ("Noah Patel", "noah.patel@example.com", "EMP-TRN-103", "Design Systems", "Pune, India", "Asia/Kolkata", 0),
-            ("Emma Wilson", "emma.wilson@example.com", "EMP-TRN-104", "Payments API", "San Francisco, USA", "America/Los_Angeles", 1),
-            ("James Anderson", "james.anderson@example.com", "EMP-TRN-105", "Auth & Identity", "New York, USA", "America/New_York", 1),
-            ("Olivia Taylor", "olivia.taylor@example.com", "EMP-TRN-106", "Distributed Systems", "Austin, USA", "America/Chicago", 1),
-            ("Lucas Hernandez", "lucas.hernandez@example.com", "EMP-TRN-107", "Analytics Engineering", "Hyderabad, India", "Asia/Kolkata", 2),
-            ("Mia Robinson", "mia.robinson@example.com", "EMP-TRN-108", "Data Science", "Seattle, USA", "America/Los_Angeles", 2),
+            ("Liam Scott", "liam.scott@mphasis.com", "3000101", "Frontend UI", "Bengaluru, India", "Asia/Kolkata", 0),
+            ("Sophia Martinez", "sophia.martinez@mphasis.com", "3000102", "Web Platforms", "Chennai, India", "Asia/Kolkata", 0),
+            ("Noah Patel", "noah.patel@mphasis.com", "3000103", "Design Systems", "Pune, India", "Asia/Kolkata", 0),
+            ("Emma Wilson", "emma.wilson@mphasis.com", "3000104", "Payments API", "San Francisco, USA", "America/Los_Angeles", 1),
+            ("James Anderson", "james.anderson@mphasis.com", "3000105", "Auth & Identity", "New York, USA", "America/New_York", 1),
+            ("Olivia Taylor", "olivia.taylor@mphasis.com", "3000106", "Distributed Systems", "Austin, USA", "America/Chicago", 1),
+            ("Lucas Hernandez", "lucas.hernandez@mphasis.com", "3000107", "Analytics Engineering", "Hyderabad, India", "Asia/Kolkata", 2),
+            ("Mia Robinson", "mia.robinson@mphasis.com", "3000108", "Data Science", "Seattle, USA", "America/Los_Angeles", 2),
         ]
         trainee_ids = []
         progress_by_trainee = {}
@@ -509,20 +517,20 @@ async def run_seed() -> None:
         # cohort and assigned to a mentor who belongs to that cohort.
         additional_trainee_specs = {
             str(cohort_b_id): [
-                ("Aarav Mehta", "aarav.mehta@example.com", "EMP-TRN-201", "Platform UI", "Mumbai, India", "Asia/Kolkata", 0, 3),
-                ("Diya Shah", "diya.shah@example.com", "EMP-TRN-202", "Developer Tools", "Pune, India", "Asia/Kolkata", 0, 5),
-                ("Ethan Brooks", "ethan.brooks@example.com", "EMP-TRN-203", "Backend Core", "Denver, USA", "America/Denver", 1, 7),
-                ("Grace Kim", "grace.kim@example.com", "EMP-TRN-204", "Cloud Services", "Seattle, USA", "America/Los_Angeles", 1, 2),
-                ("Isha Verma", "isha.verma@example.com", "EMP-TRN-205", "Data Services", "Delhi, India", "Asia/Kolkata", 3, 6),
-                ("Noor Khan", "noor.khan@example.com", "EMP-TRN-206", "Web Platforms", "Hyderabad, India", "Asia/Kolkata", 3, 1),
+                ("Aarav Mehta", "aarav.mehta@mphasis.com", "3000201", "Platform UI", "Mumbai, India", "Asia/Kolkata", 0, 3),
+                ("Diya Shah", "diya.shah@mphasis.com", "3000202", "Developer Tools", "Pune, India", "Asia/Kolkata", 0, 5),
+                ("Ethan Brooks", "ethan.brooks@mphasis.com", "3000203", "Backend Core", "Denver, USA", "America/Denver", 1, 7),
+                ("Grace Kim", "grace.kim@mphasis.com", "3000204", "Cloud Services", "Seattle, USA", "America/Los_Angeles", 1, 2),
+                ("Isha Verma", "isha.verma@mphasis.com", "3000205", "Data Services", "Delhi, India", "Asia/Kolkata", 3, 6),
+                ("Noor Khan", "noor.khan@mphasis.com", "3000206", "Web Platforms", "Hyderabad, India", "Asia/Kolkata", 3, 1),
             ],
             str(cohort_c_id): [
-                ("Lily Zhang", "lily.zhang@example.com", "EMP-TRN-207", "Data Pipelines", "San Jose, USA", "America/Los_Angeles", 1, 4),
-                ("Arjun Rao", "arjun.rao@example.com", "EMP-TRN-208", "Analytics", "Chennai, India", "Asia/Kolkata", 1, 8),
-                ("Maya Patel", "maya.patel@example.com", "EMP-TRN-209", "Machine Learning", "Bengaluru, India", "Asia/Kolkata", 2, 3),
-                ("Oliver Smith", "oliver.smith@example.com", "EMP-TRN-210", "Data Quality", "New York, USA", "America/New_York", 2, 9),
-                ("Zoe Carter", "zoe.carter@example.com", "EMP-TRN-211", "Cloud Analytics", "Austin, USA", "America/Chicago", 4, 5),
-                ("Rohan Iyer", "rohan.iyer@example.com", "EMP-TRN-212", "Warehouse Engineering", "Mumbai, India", "Asia/Kolkata", 4, 2),
+                ("Lily Zhang", "lily.zhang@mphasis.com", "3000207", "Data Pipelines", "San Jose, USA", "America/Los_Angeles", 1, 4),
+                ("Arjun Rao", "arjun.rao@mphasis.com", "3000208", "Analytics", "Chennai, India", "Asia/Kolkata", 1, 8),
+                ("Maya Patel", "maya.patel@mphasis.com", "3000209", "Machine Learning", "Bengaluru, India", "Asia/Kolkata", 2, 3),
+                ("Oliver Smith", "oliver.smith@mphasis.com", "3000210", "Data Quality", "New York, USA", "America/New_York", 2, 9),
+                ("Zoe Carter", "zoe.carter@mphasis.com", "3000211", "Cloud Analytics", "Austin, USA", "America/Chicago", 4, 5),
+                ("Rohan Iyer", "rohan.iyer@mphasis.com", "3000212", "Warehouse Engineering", "Mumbai, India", "Asia/Kolkata", 4, 2),
             ],
         }
         cohort_trainee_records = {}
@@ -688,9 +696,9 @@ async def run_seed() -> None:
         # cohort (cohortId = None). The admin sees these on the Nominations page and
         # adds them to a cohort.
         pool_mentors = [
-            ("Chris Park", "chris.park@example.com", "EMP-MTR-06", "Platform Engineering", "Toronto, Canada", "America/Toronto", str(nominator_id)),
-            ("Fatima Ali", "fatima.ali@example.com", "EMP-MTR-07", "Developer Experience", "Kochi, India", "Asia/Kolkata", str(nominator_id_2)),
-            ("Nikhil Bose", "nikhil.bose@example.com", "EMP-MTR-08", "Cloud Operations", "Chicago, USA", "America/Chicago", str(admin_id)),
+            ("Chris Park", "chris.park@mphasis.com", "2000006", "Platform Engineering", "Toronto, Canada", "America/Toronto", str(nominator_id)),
+            ("Fatima Ali", "fatima.ali@mphasis.com", "2000007", "Developer Experience", "Kochi, India", "Asia/Kolkata", str(nominator_id_2)),
+            ("Nikhil Bose", "nikhil.bose@mphasis.com", "2000008", "Cloud Operations", "Chicago, USA", "America/Chicago", str(admin_id)),
         ]
         for name, email, employee_id, department, location, tz, nominated_by in pool_mentors:
             await db.mentors.insert_one({
@@ -713,12 +721,12 @@ async def run_seed() -> None:
                 "createdAt": now,
             })
         pool_trainees = [
-            ("Ava Thompson", "ava.thompson@example.com", "EMP-TRN-301", "Frontend UI", "Mumbai, India", "Asia/Kolkata", str(nominator_id)),
-            ("Ben Carter", "ben.carter@example.com", "EMP-TRN-302", "Backend Core", "Denver, USA", "America/Denver", str(nominator_id_2)),
-            ("Jia Liu", "jia.liu@example.com", "EMP-TRN-303", "Data Science", "Delhi, India", "Asia/Kolkata", str(nominator_id)),
-            ("Kavya Menon", "kavya.menon@example.com", "EMP-TRN-304", "Web Platforms", "Hyderabad, India", "Asia/Kolkata", str(nominator_id_2)),
-            ("Mason Clark", "mason.clark@example.com", "EMP-TRN-305", "Cloud Security", "Boston, USA", "America/New_York", str(admin_id)),
-            ("Ananya Iyer", "ananya.iyer@example.com", "EMP-TRN-306", "Data Platforms", "Jaipur, India", "Asia/Kolkata", str(nominator_id)),
+            ("Ava Thompson", "ava.thompson@mphasis.com", "3000301", "Frontend UI", "Mumbai, India", "Asia/Kolkata", str(nominator_id)),
+            ("Ben Carter", "ben.carter@mphasis.com", "3000302", "Backend Core", "Denver, USA", "America/Denver", str(nominator_id_2)),
+            ("Jia Liu", "jia.liu@mphasis.com", "3000303", "Data Science", "Delhi, India", "Asia/Kolkata", str(nominator_id)),
+            ("Kavya Menon", "kavya.menon@mphasis.com", "3000304", "Web Platforms", "Hyderabad, India", "Asia/Kolkata", str(nominator_id_2)),
+            ("Mason Clark", "mason.clark@mphasis.com", "3000305", "Cloud Security", "Boston, USA", "America/New_York", str(admin_id)),
+            ("Ananya Iyer", "ananya.iyer@mphasis.com", "3000306", "Data Platforms", "Jaipur, India", "Asia/Kolkata", str(nominator_id)),
         ]
         for name, email, employee_id, department, location, tz, nominated_by in pool_trainees:
             await db.trainees.insert_one({
@@ -743,12 +751,14 @@ async def run_seed() -> None:
         identity_claims = []
         for collection_name, owner_type in (("mentors", "mentor"), ("trainees", "trainee")):
             async for person in db[collection_name].find({}, {"email": 1, "employeeId": 1}):
+                validate_seed_identity(person.get("email"), person.get("employeeId"))
                 owner_id = str(person["_id"])
                 identity_claims.extend([
                     {"claim": f"email:{person['email'].strip().casefold()}", "ownerType": owner_type, "ownerId": owner_id},
                     {"claim": f"employeeId:{person['employeeId'].strip().casefold()}", "ownerType": owner_type, "ownerId": owner_id},
                 ])
         async for nominator in db.users.find({"role": "nominator"}, {"email": 1, "employeeId": 1}):
+            validate_seed_identity(nominator.get("email"), nominator.get("employeeId"))
             owner_id = str(nominator["_id"])
             identity_claims.extend([
                 {"claim": f"email:{nominator['email'].strip().casefold()}", "ownerType": "nominator", "ownerId": owner_id},
@@ -767,8 +777,8 @@ async def run_seed() -> None:
 
         print("Seed complete.")
         print("Admin:     admin@example.com / Admin@123")
-        print("Nominator: nominator@example.com / Nominator@123")
-        print("Nominator 2: nominator.west@example.com / Nominator@123")
+        print("Nominator: nominator@mphasis.com / Nominator@123")
+        print("Nominator 2: nominator.west@mphasis.com / Nominator@123")
         print("Mentors:   five accounts / Mentor@123 (Marcus Lee is globally inactive for access testing)")
         print("Demo data includes 3 cohorts, multi-cohort mentors, 20+ trainees, nomination pool records, locations/timezones, dropouts, plans, feedback, TalentNext, batches, sessions, embedded attendance, and identity claims.")
     finally:

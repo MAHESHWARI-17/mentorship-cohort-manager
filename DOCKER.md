@@ -47,7 +47,7 @@ To create or refresh only the demo nominator account without resetting other dat
 docker compose --profile demo-nominator run --build --rm demo-nominator
 ```
 
-This uses `backend/create_demo_nominator.py` and creates or updates `nominator@example.com` with password `Nominator@123`. If a cohort exists, the script assigns the nominator to the most recently created cohort.
+This uses `backend/create_demo_nominator.py` and creates or updates `demo.nominator@mphasis.com` with employee ID `9000001` and password `Nominator@123`.
 
 To remove containers and permanently delete the stored database volume:
 

@@ -1,6 +1,7 @@
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional, List
 from datetime import datetime
+from app.schemas.identity_validation import validate_employee_id_format, validate_mphasis_email_format
 
 class TraineeInMentor(BaseModel):
     id: str
@@ -23,6 +24,16 @@ class MentorNomineeCreate(BaseModel):
     timezone: Optional[str] = None
     experience: Optional[str] = None
     skills: Optional[List[str]] = []
+
+    @field_validator("email")
+    @classmethod
+    def validate_corporate_email(cls, value):
+        return validate_mphasis_email_format(value)
+
+    @field_validator("employeeId")
+    @classmethod
+    def validate_employee_id(cls, value):
+        return validate_employee_id_format(value)
 
 class CohortRef(BaseModel):
     id: str
@@ -74,6 +85,16 @@ class TraineeNomineeCreate(BaseModel):
     timezone: Optional[str] = None
     experience: Optional[str] = None
     skills: Optional[List[str]] = []
+
+    @field_validator("email")
+    @classmethod
+    def validate_corporate_email(cls, value):
+        return validate_mphasis_email_format(value)
+
+    @field_validator("employeeId")
+    @classmethod
+    def validate_employee_id(cls, value):
+        return validate_employee_id_format(value)
 
 class TraineeNomineeResponse(BaseModel):
     """Trainee as seen by admin / inside a cohort."""
@@ -133,6 +154,16 @@ class _NomineeUpdateBase(BaseModel):
         if value is not None and not value.strip():
             raise ValueError("This field cannot be blank")
         return value
+
+    @field_validator("email")
+    @classmethod
+    def validate_corporate_email(cls, value):
+        return validate_mphasis_email_format(value) if value is not None else value
+
+    @field_validator("employeeId")
+    @classmethod
+    def validate_employee_id(cls, value):
+        return validate_employee_id_format(value) if value is not None else value
 
 
 class MentorNomineeUpdate(_NomineeUpdateBase):

@@ -1,255 +1,102 @@
-# MCM v2.0 Application - Running Successfully ✅
+# Mentorship Cohort Manager
 
-**Date:** November 1, 2026  
-**Status:** LIVE & OPERATIONAL
+A role-based application for managing mentorship cohorts, nominations, training plans, mentor assignments, sessions, attendance, feedback, and learner evaluations.
 
----
+## Application stack
 
-## 🚀 Application Status
+- **Frontend:** React 18, Vite, React Router, TanStack Query, and Tailwind CSS
+- **Backend:** FastAPI, Python, and Motor (async MongoDB driver)
+- **Database:** MongoDB
+- **Deployment:** Frontend can be hosted on Vercel; API can be hosted on Render; MongoDB can be hosted on MongoDB Atlas. Local development can use a local MongoDB or Atlas.
 
-Both backend and frontend services are now running successfully!
+## Roles and main workflows
 
-### Backend Server
-- **Status:** ✅ Running
-- **Framework:** FastAPI with Uvicorn
-- **URL:** http://0.0.0.0:8000
-- **API Docs:** http://localhost:8000/api/v1/docs
-- **Reload:** Enabled (watches for file changes)
+- **Admin:** Manage cohorts, users, nominations, feedback templates, training plans, TalentNext courses, and cohort leadership evaluations.
+- **Nominator:** Nominate trainees and mentors for permitted cohorts.
+- **Mentor:** Manage assigned trainees, training progress, batches, sessions, attendance, feedback, and leadership evaluations.
+- **Trainee:** Review assigned learning and progress where enabled by the application.
 
-### Frontend Server
-- **Status:** ✅ Running
-- **Framework:** React 18 with Vite
-- **URL:** http://localhost:5173
-- **Local URLs Available:**
-  - Local: http://localhost:5173/
-  - Network: http://169.254.250.166:5173/
-  - Network: http://192.168.1.58:5173/
-  - Network: http://172.28.208.1:5173/
+Person records (nominators, mentors, and trainees) require a globally unique **seven-digit employee ID** and a unique email ending in **`@mphasis.com`**. Uniqueness applies across those person types. A mentor profile and its linked login account are treated as one identity. On startup the backend normalizes legacy person records and rebuilds identity claims; see [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md) for details.
 
----
+## Run locally without Docker
 
-## 🔗 Access Points
+Prerequisites: Python 3.10+, Node.js 18+, npm, and a reachable MongoDB instance.
 
-| Component | URL | Status |
-|-----------|-----|--------|
-| Frontend App | http://localhost:5173 | ✅ Running |
-| Backend API | http://localhost:8000 | ✅ Running |
-| API Documentation | http://localhost:8000/api/v1/docs | ✅ Available |
-| ReDoc (Alt Docs) | http://localhost:8000/api/v1/redoc | ✅ Available |
+1. Configure the backend environment using `backend/.env.example` (if present) or the settings documented in `backend/app/core/config.py`. Set the MongoDB connection string, database name, and a private JWT secret. Do not commit real credentials.
+2. Install and start the backend:
 
----
+   ```powershell
+   cd backend
+   python -m venv .venv
+   .\.venv\Scripts\Activate.ps1
+   pip install -r requirements.txt
+   python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+   ```
 
-## 🎯 What You Can Do
+3. In a second terminal, install and start the frontend:
 
-### Frontend Application
-1. **Access the Application**
-   - Open http://localhost:5173 in your browser
-   - You'll see the MCM v2.0 login page
+   ```powershell
+   cd frontend
+   npm install
+   npm run dev
+   ```
 
-2. **Available Features**
-   - Authentication (login, password reset, change password)
-   - Admin Dashboard (analytics, filtering, exports)
-   - Nominator Portal (nominations, management)
-   - Mentor Interface (batch management, sessions)
-   - User Management (admin panel)
+4. Open <http://localhost:5173>. The API is at <http://localhost:8000>; FastAPI's interactive API documentation is at <http://localhost:8000/api/docs>.
 
-3. **Navigate To**
-   - Admin Dashboard: `/admin` (requires admin login)
-   - Nominator Portal: `/nominator` (requires nominator role)
-   - Mentor Dashboard: `/mentor` (requires mentor role)
+The frontend API base URL is configured through its environment settings. Point local development to the local API and production to the deployed API. Never place a server secret or MongoDB URI in frontend environment variables.
 
-### Backend API
-1. **Interactive Documentation**
-   - Go to http://localhost:8000/api/v1/docs
-   - Try out endpoints directly in Swagger UI
+## Run with Docker Compose
 
-2. **Endpoints Available**
-   - Authentication: `/api/v1/auth/*`
-   - Admin: `/admin/*` (dashboards, analytics)
-   - Users: `/users/*`
-   - Nominations: `/nominations/*`
-   - Batches: `/batches/*`
-   - Sessions: `/sessions/*`
-   - And more...
+See [DOCKER.md](DOCKER.md) for the Compose workflow. The Compose setup includes the frontend, API, and MongoDB services. The demo seed profile is optional and destructive to existing application data.
 
----
+## Demo data
 
-## 📊 Current Configuration
+The current sample dataset is defined in `backend/seed.py`. To seed manually, configure the backend environment first, then run:
 
-### Backend Configuration
-```
-PROJECT_NAME: MCM v2.0
-API_VERSION: v1
-PORT: 8000
-HOST: 0.0.0.0
-RELOAD: Enabled
-DATABASE: MongoDB (via Motor driver)
+```powershell
+cd backend
+python seed.py
 ```
 
-### Frontend Configuration
+**Warning:** the seed script clears and recreates application collections in its configured database. Use it only with a disposable development database or after making a backup. Never point it at production or valuable Atlas data.
+
+The dedicated demo nominator helper is `backend/create_demo_nominator.py`; its usage is described in [DOCKER.md](DOCKER.md).
+
+## Mentor leadership evaluation
+
+Mentors can submit or update a leadership evaluation for their assigned trainee. Admins can review the scores, attendance, written strengths and growth areas, and recommendation in the cohort's **Leadership** section. The evaluation is unique per trainee and cohort and uses five competencies, six leadership behaviors, and attendance from completed sessions.
+
+Each rating is an integer from 1 to 5. The total is out of 100, with attendance weighted at **10%** (below the requested 15% ceiling):
+
+```text
+Competency average = sum of 5 competency ratings / 5
+Competency points   = ((competency average - 1) / 4) × 60
+
+Behavior average    = sum of 6 behavior ratings / 6
+Behavior points     = ((behavior average - 1) / 4) × 30
+
+Attendance rate     = (present sessions + late sessions) / marked completed sessions
+Attendance points   = attendance rate × 10
+
+Final score         = competency points + behavior points + attendance points
+                      (maximum 100)
 ```
-FRAMEWORK: React 18
-BUILD_TOOL: Vite
-PORT: 5173
-DEVELOPMENT_MODE: Yes (HMR enabled)
-API_BASE: http://localhost:8000
+
+The linear 1–5 scaling makes a rating of 1 contribute zero points and a rating of 5 contribute the full weight of that category. Attendance counts `present` and `late` as attended; `absent` and `excused` are marked but not attended. Only completed sessions with attendance records contribute. If no sessions have been marked, the attendance rate and attendance points are zero. Scores are rounded to two decimal places. See [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md) for the stored evaluation shape.
+
+## Documentation
+
+- [Database schema](DATABASE_SCHEMA.md)
+- [Database schema diagram](DATABASE_SCHEMA_DIAGRAM.md)
+- [Docker Compose guide](DOCKER.md)
+
+## Source layout
+
+```text
+backend/   FastAPI app, MongoDB services, schemas, and seed data
+frontend/  React application
+docker-compose.yml
+DATABASE_SCHEMA.md
+DATABASE_SCHEMA_DIAGRAM.md
+DOCKER.md
 ```
-
----
-
-## ⚙️ Running Services
-
-### Terminal 1 - Backend
-```bash
-python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-**Process ID:** term_1793734229234_8k76pkgryuy
-
-### Terminal 2 - Frontend  
-```bash
-npm run dev
-```
-**Process ID:** term_1793734270064_p4qhstpsus
-
----
-
-## 📝 Notes
-
-### Database
-- MongoDB connection is configured in `backend/app/core/config.py`
-- Make sure MongoDB is running locally or accessible via the configured connection string
-- Collections are created automatically on first API call
-
-### Environment
-- Python 3.10+
-- Node.js 16+
-- MongoDB Atlas or Local MongoDB
-
-### Available Test Data
-- You can seed test data by running:
-  ```bash
-  cd backend
-  python seed.py
-  ```
-
----
-
-## 🐛 Troubleshooting
-
-### Backend Not Starting
-- Check Python version: `python --version`
-- Install dependencies: `pip install -r backend/requirements.txt`
-- Check port 8000 is not in use: `netstat -ano | findstr :8000`
-
-### Frontend Not Starting
-- Check Node.js: `node --version`
-- Install dependencies: `npm install` in frontend directory
-- Check port 5173 is not in use
-
-### Database Connection Issues
-- Verify MongoDB is running
-- Check connection string in `backend/app/core/config.py`
-- Ensure network connectivity if using MongoDB Atlas
-
-### API Not Responding
-- Check CORS is enabled (it is by default)
-- Try the Swagger UI at http://localhost:8000/api/v1/docs
-- Check browser console for errors
-
----
-
-## 📚 Available Routes
-
-### Public Routes
-- `/login` - Login page
-- `/password-reset` - Password reset
-- `/change-password` - Change password
-
-### Protected Routes (require authentication)
-- `/admin` - Admin dashboard (admin only)
-- `/admin/cohorts` - Cohort management
-- `/admin/users` - User management
-- `/nominator` - Nominator dashboard
-- `/nominator/nominations` - Nominations list
-- `/mentor/batches` - Batch management
-- `/mentor/sessions` - Session scheduling
-- `/profile` - User profile
-
----
-
-## 🎓 Phase 6 Features Available
-
-The admin dashboard (Phase 6) includes:
-
-### Dashboard Features
-- ✅ 4 Tab Views (Overview, Attendance, Cohorts, Activity)
-- ✅ System-wide Analytics
-- ✅ Attendance Metrics & Trends
-- ✅ Cohort Performance Comparison
-- ✅ Batch Completion Tracking
-- ✅ User Activity Monitoring
-- ✅ Advanced Filtering
-- ✅ CSV Report Export
-
-### Accessing Admin Dashboard
-1. Login with admin account
-2. Navigate to `/admin`
-3. View real-time analytics
-4. Export reports as CSV
-
----
-
-## ✅ System Status Check
-
-- Backend Server: ✅ RUNNING
-- Frontend Server: ✅ RUNNING
-- API Endpoints: ✅ AVAILABLE
-- Database: ⏳ Awaiting connection test
-- Notifications: ✅ Ready
-
----
-
-## 🚦 Next Steps
-
-1. **Open the Application**
-   - Go to http://localhost:5173 in your browser
-
-2. **Login**
-   - Use admin credentials or create a test account
-
-3. **Explore Features**
-   - Navigate through available sections
-   - Test the admin dashboard
-   - Try filtering and exporting reports
-
-4. **Check API**
-   - Go to http://localhost:8000/api/v1/docs
-   - Explore available endpoints
-   - Try test requests
-
-5. **Check Logs**
-   - Backend logs appear in terminal 1
-   - Frontend logs appear in terminal 2
-
----
-
-## 📞 Support
-
-For issues or questions:
-1. Check the troubleshooting section above
-2. Review error messages in terminal output
-3. Check browser console (F12) for frontend errors
-4. Review API documentation at http://localhost:8000/api/v1/docs
-
----
-
-## 🎉 Deployment Complete
-
-MCM v2.0 Mentorship Cohort Manager is now running locally!
-
-**Application Ready:** ✅  
-**Time:** November 1, 2026  
-**Status:** ALL SYSTEMS GO 🚀
-
-
-

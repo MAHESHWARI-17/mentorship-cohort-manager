@@ -121,6 +121,22 @@ erDiagram
         object answers
     }
 
+    MENTOR_EVALUATIONS {
+        ObjectId _id PK
+        string traineeId FK
+        string cohortId FK
+        string mentorId FK
+        object competencyScores "5 ratings, 1-5"
+        object behaviorScores "6 ratings, 1-5"
+        object attendance "counts and rate"
+        object scoreSummary "total out of 100"
+        string strengths
+        string growthAreas
+        string recommendation
+        date submittedAt
+        date updatedAt
+    }
+
     TALENTNEXT_COURSES {
         ObjectId _id PK
         string name
@@ -173,6 +189,9 @@ erDiagram
     MENTORS ||--o{ SESSIONS : leads
     TRAINEES ||--o{ PROGRESS : tracks
     TRAINEES ||--o{ FEEDBACK_RESPONSES : receives
+    TRAINEES ||--o{ MENTOR_EVALUATIONS : evaluated
+    MENTORS ||--o{ MENTOR_EVALUATIONS : submits
+    COHORTS ||--o{ MENTOR_EVALUATIONS : scopes
     TRAINEES ||--o{ TALENTNEXT_PROGRESS : tracks
     COHORTS ||--o{ TALENTNEXT_PROGRESS : scopes
     TALENTNEXT_COURSES }o--o{ TRAINING_TEMPLATES : "template course assignments"
@@ -188,3 +207,5 @@ erDiagram
 - TalentNext course selections are stored on reusable training templates and copied to cohort training plans when applied.
 - IDs are not fully uniform across older API paths: some references use strings while others use BSON `ObjectId` values.
 - A trainee is limited to one active batch at a time by application logic.
+- Each trainee has at most one leadership evaluation per cohort. Its score combines competencies (60 points), behaviors (30 points), and attendance (10 points); the calculation and attendance rules are documented in [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md).
+- Nominator, mentor, and trainee identities use globally unique seven-digit employee IDs and `@mphasis.com` email addresses.

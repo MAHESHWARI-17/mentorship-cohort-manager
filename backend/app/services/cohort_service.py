@@ -39,6 +39,7 @@ class CohortService:
             related_queries.append({"traineeId": {"$in": trainee_refs}})
         await db.progress.delete_many({"$or": related_queries})
         await db.feedbackResponses.delete_many({"$or": related_queries})
+        await db.mentorEvaluations.delete_many({"$or": related_queries})
         if batch_oids:
             await db.batches.delete_many({"_id": {"$in": batch_oids}})
 

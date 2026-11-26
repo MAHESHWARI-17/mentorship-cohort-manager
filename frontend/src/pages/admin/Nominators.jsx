@@ -13,6 +13,7 @@ export function Nominators() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [employeeId, setEmployeeId] = useState('');
   const [password, setPassword] = useState('Nominator@123');
   const [selectedCohorts, setSelectedCohorts] = useState([]);
 
@@ -46,6 +47,7 @@ export function Nominators() {
       setIsModalOpen(false);
       setName('');
       setEmail('');
+      setEmployeeId('');
       setPassword('Nominator@123');
       setSelectedCohorts([]);
     },
@@ -75,13 +77,14 @@ export function Nominators() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!name || !email || !password) {
+    if (!name || !email || !employeeId || !password) {
       showToast('Please fill in all required fields', 'warning');
       return;
     }
     createMutation.mutate({
       name,
       email,
+      employeeId,
       password,
       assignedCohortIds: selectedCohorts,
     });
@@ -193,9 +196,28 @@ export function Nominators() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="rachel.foster@example.com"
+              pattern="[^\s@]+@mphasis\.com"
+              title="Use an @mphasis.com email address"
+              placeholder="rachel.foster@mphasis.com"
               className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-emerald-500"
             />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Employee ID</label>
+            <input
+              type="text"
+              required
+              inputMode="numeric"
+              pattern="[0-9]{7}"
+              maxLength={7}
+              title="Enter exactly 7 digits"
+              value={employeeId}
+              onChange={(e) => setEmployeeId(e.target.value.replace(/\D/g, '').slice(0, 7))}
+              placeholder="1234567"
+              className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-emerald-500"
+            />
+            <p className="mt-1 text-[11px] text-slate-500">Must be unique across all people</p>
           </div>
 
           <div>

@@ -9,6 +9,8 @@ from app.services.progress_service import ProgressService
 from app.services.feedback_service import FeedbackService
 from app.schemas.progress import ProgressUpdateRequest, ProgressResponse, TraineeDropoutRequest
 from app.schemas.feedback import FeedbackSubmitRequest, FeedbackResponseModel
+from app.schemas.evaluation import MentorEvaluationRequest
+from app.services.evaluation_service import EvaluationService
 
 router = APIRouter(prefix="/mentor", tags=["Mentor Operations"])
 
@@ -177,6 +179,17 @@ async def submit_trainee_feedback(
     current_user: dict = Depends(require_any_authenticated)
 ):
     return await FeedbackService.submit_feedback(db, trainee_id, req, current_user, cohort_id=cohort_id)
+
+@router.put("/trainees/{trainee_id}/evaluation")
+async def submit_trainee_evaluation(
+    trainee_id: str,
+    req: MentorEvaluationRequest,
+    cohort_id: Optional[str] = None,
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    current_user: dict = Depends(require_mentor)
+):
+    """Create or update the assigned mentor's leadership evaluation for a trainee."""
+    return await EvaluationService.submit(db, trainee_id, cohort_id, req, current_user)
 
 @router.get("/cohort-plan")
 async def get_mentor_cohort_plan(

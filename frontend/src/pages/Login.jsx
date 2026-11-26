@@ -148,22 +148,22 @@ export function Login() {
 
                 <button
                   type="button"
-                  onClick={() => handleQuickLogin('sarah.jenkins@example.com', 'Mentor@123')}
+                  onClick={() => handleQuickLogin('sarah.jenkins@mphasis.com', 'Mentor@123')}
                   className="p-3 rounded-xl border border-slate-200 hover:border-blue-400 hover:bg-blue-50/50 flex flex-col items-center gap-1.5 text-center transition-all group"
                 >
                   <Award className="w-5 h-5 text-blue-600 group-hover:scale-110 transition-transform" />
                   <span className="text-xs font-bold text-slate-800">Mentor</span>
-                  <span className="text-[10px] text-slate-400">sarah.jenkins@example.com</span>
+                  <span className="text-[10px] text-slate-400">sarah.jenkins@mphasis.com</span>
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => handleQuickLogin('nominator@example.com', 'Nominator@123')}
+                  onClick={() => handleQuickLogin('nominator@mphasis.com', 'Nominator@123')}
                   className="p-3 rounded-xl border border-slate-200 hover:border-purple-400 hover:bg-purple-50/50 flex flex-col items-center gap-1.5 text-center transition-all group"
                 >
                   <Users className="w-5 h-5 text-purple-600 group-hover:scale-110 transition-transform" />
                   <span className="text-xs font-bold text-slate-800">Nominator</span>
-                  <span className="text-[10px] text-slate-400">nominator@example.com</span>
+                  <span className="text-[10px] text-slate-400">nominator@mphasis.com</span>
                 </button>
               </div>
             </div>

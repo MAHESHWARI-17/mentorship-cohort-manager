@@ -9,6 +9,7 @@ import { Badge } from '../../components/Badge';
 import { ProgressBar } from '../../components/ProgressBar';
 import { SkeletonCard } from '../../components/SkeletonCard';
 import { EmptyState } from '../../components/EmptyState';
+import { MentorEvaluationModal } from '../../components/MentorEvaluationModal';
 import { 
   ArrowLeft, CheckCircle2, Circle, Clock, MessageSquare, 
   Send, Calendar, Star, Check, ChevronRight, CheckCheck,
@@ -35,6 +36,7 @@ export function TraineeDetail() {
   const [selectedWeek, setSelectedWeek] = useState(1);
   const [answers, setAnswers] = useState({});
   const [expandedTalentNext, setExpandedTalentNext] = useState(true);
+  const [isEvaluationOpen, setIsEvaluationOpen] = useState(false);
 
   // 1. Fetch Trainee Details (includes trainee, cohort, plan, progress, feedbackForm, feedbackHistory)
   const { data, isLoading, isError, error } = useQuery({
@@ -52,6 +54,8 @@ export function TraineeDetail() {
   const feedbackHistory = data?.feedbackHistory || [];
   const talentnextCourses = data?.talentnextCourses || [];
   const talentnextProgress = data?.talentnextProgress || {};
+  const mentorEvaluation = data?.mentorEvaluation || null;
+  const evaluationAttendance = data?.evaluationAttendance || { attendanceRate: 0, sessionsAttended: 0, sessionsMarked: 0 };
 
   // Calculate weeks list from plan (or default 4 weeks)
   const totalWeeksCount = plan?.totalWeeks || plan?.weeks?.length || 4;
@@ -327,6 +331,16 @@ export function TraineeDetail() {
               </div>
 
               <div className="flex flex-col items-start lg:items-end gap-2">
+                {role === 'mentor' && trainee.status !== 'dropped_out' && (
+                  <button
+                    type="button"
+                    onClick={() => setIsEvaluationOpen(true)}
+                    className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-emerald-800"
+                  >
+                    <ClipboardList className="h-4 w-4" />
+                    {mentorEvaluation ? 'Update Evaluation' : 'Evaluation'}
+                  </button>
+                )}
                 {trainee.status === 'dropped_out' ? (
                   <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-right">
                     <p className="text-sm font-bold text-rose-700">Trainee dropped out</p>
@@ -864,6 +878,14 @@ export function TraineeDetail() {
 
       </div>
       </div>
+      <MentorEvaluationModal
+        isOpen={isEvaluationOpen}
+        onClose={() => setIsEvaluationOpen(false)}
+        trainee={trainee}
+        cohortId={cohortId || trainee.cohort?.id}
+        evaluation={mentorEvaluation}
+        attendance={evaluationAttendance}
+      />
     </div>
   );
 }

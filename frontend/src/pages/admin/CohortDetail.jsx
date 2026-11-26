@@ -78,6 +78,7 @@ export function CohortDetail() {
   const [selectedTraineeForFeedback, setSelectedTraineeForFeedback] = useState(null);
   const [isTraineeFeedbackModalOpen, setIsTraineeFeedbackModalOpen] = useState(false);
   const [expandedTalentNext, setExpandedTalentNext] = useState(true); // TalentNext section expanded by default
+  const [expandedLeadershipEvaluationId, setExpandedLeadershipEvaluationId] = useState(null);
 
   // Form states for adding nominee records
 
@@ -232,6 +233,12 @@ export function CohortDetail() {
       return res.data;
     },
     enabled: isTraineeFeedbackModalOpen && !!selectedTraineeForFeedback?.id,
+  });
+
+  const { data: leadershipEvaluations = [], isLoading: leadershipEvaluationsLoading } = useQuery({
+    queryKey: ['adminLeadershipEvaluations', cohortId],
+    queryFn: async () => (await api.get(`/cohorts/${cohortId}/leadership-evaluations`)).data,
+    enabled: activeTab === 'leadership' && !!cohortId,
   });
 
   // Mutations
@@ -607,6 +614,7 @@ export function CohortDetail() {
           { key: 'nominations', label: `Mentor Details`, icon: Users },
           { key: 'assignments', label: `Assign Mentors (${cohort.assignedTraineeCount || 0}/${cohort.traineeCount || 0})`, icon: Award },
           { key: 'talentnext', label: `TalentNext (${cohort?.talentnextCourses?.length || 0})`, icon: Sparkles },
+          { key: 'leadership', label: 'Leadership', icon: ClipboardList },
         ].map((tab) => {
           const Icon = tab.icon;
           const isSelected = activeTab === tab.key;
@@ -1481,6 +1489,76 @@ export function CohortDetail() {
               />
             )}
           </div>
+        </div>
+      )}
+
+      {activeTab === 'leadership' && (
+        <div className="space-y-5">
+          <div>
+            <h2 className="text-lg font-bold text-slate-900">Leadership Evaluations</h2>
+            <p className="mt-1 text-sm text-slate-500">Review mentor evaluations, attendance, ratings, written feedback, and recommendations for this cohort.</p>
+          </div>
+          {leadershipEvaluationsLoading ? (
+            <div className="rounded-2xl border border-slate-200 p-10 text-center text-sm text-slate-500">Loading cohort evaluations…</div>
+          ) : leadershipEvaluations.length === 0 ? (
+            <EmptyState icon={ClipboardList} title="No leadership evaluations yet" description="Evaluations submitted by mentors will appear here with their full scores and feedback." />
+          ) : (
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3">Trainee</th><th className="px-4 py-3">Mentor</th><th className="px-4 py-3">Attendance</th><th className="px-4 py-3">Score</th><th className="px-4 py-3">Recommendation</th><th className="px-4 py-3">Submitted</th><th className="px-4 py-3 text-right">Details</th></tr></thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {leadershipEvaluations.map((evaluation) => {
+                      const expanded = expandedLeadershipEvaluationId === evaluation.id;
+                      const recommendation = { ready_now: 'Ready now', ready_with_coaching: 'Ready with coaching', not_yet_ready: 'Not yet ready' }[evaluation.recommendation] || evaluation.recommendation;
+                      const competencyNames = { problemDiscovery: 'Problem Discovery', ownership: 'Ownership', solutionQuality: 'Solution Quality', communication: 'Communication', leadershipDefense: 'Leadership Defense' };
+                      const behaviorNames = { customerObsession: 'Customer Obsession', biasForAction: 'Bias for Action', ownership: 'Ownership', systemsThinking: 'Systems Thinking', learningAgility: 'Learning Agility', executivePresence: 'Executive Presence' };
+                      return (
+                        <React.Fragment key={evaluation.id}>
+                          <tr className="hover:bg-slate-50/70">
+                            <td className="px-4 py-3"><div className="font-semibold text-slate-900">{evaluation.traineeName}</div><div className="text-xs text-slate-500">{evaluation.traineeEmployeeId}</div></td>
+                            <td className="px-4 py-3"><div className="font-medium text-slate-800">{evaluation.mentorName}</div><div className="text-xs text-slate-500">{evaluation.mentorEmail}</div></td>
+                            <td className="px-4 py-3">{evaluation.attendance?.attendanceRate ?? 0}% <span className="text-xs text-slate-500">({evaluation.attendance?.sessionsAttended ?? 0}/{evaluation.attendance?.sessionsMarked ?? 0})</span></td>
+                            <td className="px-4 py-3 font-bold text-emerald-800">{evaluation.scoreSummary?.totalScore ?? 0} / 100</td>
+                            <td className="px-4 py-3">{recommendation}</td>
+                            <td className="px-4 py-3 text-slate-600">{evaluation.submittedAt ? new Date(evaluation.submittedAt).toLocaleDateString() : '—'}</td>
+                            <td className="px-4 py-3 text-right"><button type="button" onClick={() => setExpandedLeadershipEvaluationId(expanded ? null : evaluation.id)} className="font-semibold text-indigo-700 hover:text-indigo-900">{expanded ? 'Hide' : 'View'} details</button></td>
+                          </tr>
+                          {expanded && (
+                            <tr className="bg-slate-50/70"><td colSpan="7" className="px-4 py-5">
+                              <div className="grid gap-5 lg:grid-cols-2">
+                                <section className="rounded-xl border border-slate-200 bg-white p-4">
+                                  <h3 className="mb-3 text-sm font-bold text-slate-900">Core Competencies <span className="ml-1 text-xs font-medium text-slate-500">avg {evaluation.competencyAverage}/5 · {evaluation.scoreSummary?.competencyPoints}/60 points</span></h3>
+                                  <div className="space-y-2">{Object.entries(evaluation.competencyScores || {}).map(([key, score]) => <div key={key} className="flex justify-between gap-3 border-b border-slate-100 pb-2 text-sm last:border-0"><span className="text-slate-700">{competencyNames[key] || key}</span><span className="font-bold text-slate-900">{score} / 5</span></div>)}</div>
+                                </section>
+                                <section className="rounded-xl border border-slate-200 bg-white p-4">
+                                  <h3 className="mb-3 text-sm font-bold text-slate-900">Leadership Behaviors <span className="ml-1 text-xs font-medium text-slate-500">avg {evaluation.behaviorAverage}/5 · {evaluation.scoreSummary?.behaviorPoints}/30 points</span></h3>
+                                  <div className="space-y-2">{Object.entries(evaluation.behaviorScores || {}).map(([key, score]) => <div key={key} className="flex justify-between gap-3 border-b border-slate-100 pb-2 text-sm last:border-0"><span className="text-slate-700">{behaviorNames[key] || key}</span><span className="font-bold text-slate-900">{score} / 5</span></div>)}</div>
+                                </section>
+                                <section className="rounded-xl border border-slate-200 bg-white p-4">
+                                  <h3 className="mb-2 text-sm font-bold text-slate-900">Attendance</h3>
+                                  <p className="text-sm text-slate-700">{evaluation.attendance?.sessionsAttended ?? 0} attended (present or late) out of {evaluation.attendance?.sessionsMarked ?? 0} marked completed sessions. Attendance score: <strong>{evaluation.scoreSummary?.attendancePoints ?? 0} / 10</strong>.</p>
+                                </section>
+                                <section className="rounded-xl border border-slate-200 bg-white p-4">
+                                  <h3 className="mb-2 text-sm font-bold text-slate-900">Recommendation & total</h3>
+                                  <p className="text-sm text-slate-700">{recommendation}</p>
+                                  <p className="mt-2 text-lg font-black text-emerald-800">{evaluation.scoreSummary?.totalScore ?? 0} / 100</p>
+                                </section>
+                                <section className="rounded-xl border border-slate-200 bg-white p-4"><h3 className="mb-2 text-sm font-bold text-slate-900">Strengths</h3><p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{evaluation.strengths}</p></section>
+                                <section className="rounded-xl border border-slate-200 bg-white p-4"><h3 className="mb-2 text-sm font-bold text-slate-900">Growth Areas</h3><p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{evaluation.growthAreas}</p></section>
+                              </div>
+                              <p className="mt-3 text-right text-xs text-slate-500">Last updated {evaluation.updatedAt ? new Date(evaluation.updatedAt).toLocaleString() : '—'}</p>
+                            </td></tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div className="border-t border-slate-100 px-4 py-3 text-xs text-slate-500">Score: competency (60 points) + behavior (30 points) + attendance (10 points).</div>
+            </div>
+          )}
         </div>
       )}
 

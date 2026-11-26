@@ -472,11 +472,11 @@ export function Nominations() {
           </div>
           <div>
             <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-700">Employee ID *</label>
-            <input required value={newEmployeeId} onChange={(e) => setNewEmployeeId(e.target.value)} placeholder="Employee ID" className={inputClass} />
+            <input required inputMode="numeric" pattern="[0-9]{7}" maxLength={7} title="Enter exactly 7 digits" value={newEmployeeId} onChange={(e) => setNewEmployeeId(e.target.value.replace(/\D/g, '').slice(0, 7))} placeholder="1234567" className={inputClass} />
           </div>
           <div>
             <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-700">Email *</label>
-            <input required type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="name@example.com" className={inputClass} />
+            <input required type="email" pattern="[^\s@]+@mphasis\.com" title="Use an @mphasis.com email address" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="name@mphasis.com" className={inputClass} />
           </div>
           <p className="rounded-xl bg-amber-50 p-3 text-xs leading-relaxed text-amber-800">
             A temporary password is generated from the name and employee ID. The nominator must change it at first sign-in.

@@ -1,6 +1,8 @@
-"""Global identity uniqueness for mentor, trainee, and nominator records."""
+"""Global identity uniqueness and canonical identity validation."""
+import re
 from typing import Optional
 
+from bson import ObjectId
 from fastapi import HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pymongo.errors import DuplicateKeyError
@@ -12,6 +14,139 @@ def _normalize_email(value: str) -> str:
 
 def _normalize_employee_id(value: str) -> str:
     return value.strip().casefold()
+
+
+def validate_employee_id(value: str) -> str:
+    value = str(value or "").strip()
+    if not re.fullmatch(r"\d{7}", value):
+        raise HTTPException(status_code=422, detail="Employee ID must be exactly 7 digits")
+    return value
+
+
+def validate_mphasis_email(value: str) -> str:
+    value = str(value or "").strip().lower()
+    if not value.endswith("@mphasis.com"):
+        raise HTTPException(status_code=422, detail='Email must end with "@mphasis.com"')
+    return value
+
+
+async def repair_existing_person_identity_data(db: AsyncIOMotorDatabase) -> None:
+    """Repair legacy employee IDs and email domains before rebuilding identity claims.
+
+    Valid, unique IDs and Mphasis email local parts are retained. Invalid or
+    duplicated IDs receive the next available seven-digit number; addresses keep
+    their local part and move to @mphasis.com, with a numeric suffix if needed
+    to preserve global email uniqueness. Linked mentor login accounts mirror
+    their profile's repaired identity.
+    """
+    linked_mentor_user_ids = set()
+    async for mentor in db.mentors.find({"userId": {"$exists": True, "$ne": None}}, {"userId": 1}):
+        linked_mentor_user_ids.add(str(mentor.get("userId")))
+
+    people = []
+    for collection_name, owner_type, query in (
+        ("mentors", "mentor", {}),
+        ("trainees", "trainee", {}),
+        ("nominators", "nominator", {}),
+        ("users", "nominator", {"role": "nominator"}),
+        ("users", "user", {"role": {"$in": ["mentor", "trainee"]}}),
+    ):
+        async for record in db[collection_name].find(query).sort("_id", 1):
+            if collection_name == "users" and str(record["_id"]) in linked_mentor_user_ids:
+                continue
+            people.append((collection_name, owner_type, record))
+
+    first_valid_occurrence = set()
+    preserved_ids = set()
+    valid_for_record = {}
+    for collection_name, _, record in people:
+        raw = str(record.get("employeeId") or "").strip()
+        key = (collection_name, str(record["_id"]))
+        if re.fullmatch(r"\d{7}", raw) and raw not in first_valid_occurrence:
+            first_valid_occurrence.add(raw)
+            preserved_ids.add(raw)
+            valid_for_record[key] = raw
+
+    # Admins and any other non-person account addresses still participate in
+    # users.email's unique index, so reserve them while choosing new addresses.
+    non_person_emails = set()
+    for user in await db.users.find({"role": {"$nin": ["mentor", "trainee", "nominator"]}}, {"email": 1}).to_list(None):
+        email = str(user.get("email") or "").strip().casefold()
+        if email:
+            non_person_emails.add(email)
+
+    # Keep already-compliant unique Mphasis addresses stable; allocate new
+    # addresses around them so old records cannot take a valid user's email.
+    preserved_emails = {}
+    for collection_name, _, record in people:
+        email = str(record.get("email") or "").strip().lower()
+        key = (collection_name, str(record["_id"]))
+        normalized = email.casefold()
+        if email.endswith("@mphasis.com") and normalized not in non_person_emails and normalized not in preserved_emails.values():
+            preserved_emails[key] = email
+    used_emails = non_person_emails | {email.casefold() for email in preserved_emails.values()}
+
+    used_ids = set()
+    next_id = 1000000
+    repairs = []
+    linked_user_targets = {}
+    for collection_name, owner_type, record in people:
+        record_id = str(record["_id"])
+        employee_id = valid_for_record.get((collection_name, record_id))
+        if not employee_id:
+            while True:
+                next_id += 1
+                if next_id > 9999999:
+                    raise RuntimeError("No unused seven-digit employee IDs remain")
+                candidate_id = f"{next_id:07d}"
+                if candidate_id not in preserved_ids and candidate_id not in used_ids:
+                    employee_id = candidate_id
+                    break
+        used_ids.add(employee_id)
+
+        key = (collection_name, record_id)
+        candidate_email = preserved_emails.get(key)
+        if not candidate_email:
+            raw_email = str(record.get("email") or "").strip().lower()
+            local_part = raw_email.split("@", 1)[0] if "@" in raw_email else raw_email
+            local_part = re.sub(r"[^a-z0-9._-]+", ".", local_part.casefold())
+            local_part = re.sub(r"\.{2,}", ".", local_part).strip("._-")
+            if not local_part:
+                local_part = f"employee.{employee_id}"
+            candidate_email = f"{local_part}@mphasis.com"
+            suffix = 2
+            while candidate_email.casefold() in used_emails:
+                candidate_email = f"{local_part}.{suffix}@mphasis.com"
+                suffix += 1
+            used_emails.add(candidate_email.casefold())
+
+        changes = {"employeeId": employee_id, "email": candidate_email}
+        if any(record.get(field) != value for field, value in changes.items()):
+            repairs.append((collection_name, record["_id"], changes))
+        if collection_name == "users":
+            linked_user_targets[record["_id"]] = changes
+        if collection_name == "mentors" and record.get("userId"):
+            try:
+                linked_user_id = ObjectId(str(record["userId"]))
+            except Exception:
+                linked_user_id = record["userId"]
+            linked_user_targets[linked_user_id] = changes
+
+    # Only stage login accounts whose email is actually changing, then set all
+    # final addresses. This frees old values for safe swaps and is a no-op on
+    # subsequent startups after the data has been normalized once.
+    for user_id, changes in linked_user_targets.items():
+        current = await db.users.find_one({"_id": user_id}, {"email": 1})
+        if current and current.get("email") != changes["email"]:
+            await db.users.update_one(
+                {"_id": user_id},
+                {"$set": {"email": f"identity-migration-{user_id}@identity.invalid"}},
+            )
+
+    for collection_name, record_id, changes in repairs:
+        await db[collection_name].update_one({"_id": record_id}, {"$set": changes})
+    for user_id, changes in linked_user_targets.items():
+        await db.users.update_one({"_id": user_id}, {"$set": changes})
 
 
 async def backfill_existing_person_identity_claims(db: AsyncIOMotorDatabase) -> None:
@@ -29,6 +164,7 @@ async def backfill_existing_person_identity_claims(db: AsyncIOMotorDatabase) -> 
     for collection_name, owner_type, query in (
         ("mentors", "mentor", {}),
         ("trainees", "trainee", {}),
+        ("nominators", "nominator", {}),
         ("users", "nominator", {"role": "nominator"}),
         ("users", "user", {"role": {"$in": ["mentor", "trainee"]}}),
     ):
@@ -74,6 +210,8 @@ async def _assert_no_conflicting_records(
         ("mentors", "mentor", "employeeId", employee_key),
         ("trainees", "trainee", "email", email_key),
         ("trainees", "trainee", "employeeId", employee_key),
+        ("nominators", "nominator", "email", email_key),
+        ("nominators", "nominator", "employeeId", employee_key),
         ("users", "nominator", "email", email_key),
         ("users", "nominator", "employeeId", employee_key),
         ("users", "user", "email", email_key),
@@ -114,6 +252,8 @@ async def claim_person_identity(
     claim writes, so old databases are protected even before migration has
     populated all claims.
     """
+    email = validate_mphasis_email(email)
+    employee_id = validate_employee_id(employee_id)
     email_key = _normalize_email(email)
     employee_key = _normalize_employee_id(employee_id)
     if not email_key or not employee_key:
@@ -170,6 +310,8 @@ async def update_person_identity(
     the caller rolls back `added` if the profile update fails, and releases
     `stale` (the old values) once it succeeds.
     """
+    email = validate_mphasis_email(email)
+    employee_id = validate_employee_id(employee_id)
     email_key = _normalize_email(email)
     employee_key = _normalize_employee_id(employee_id)
     if not email_key or not employee_key:

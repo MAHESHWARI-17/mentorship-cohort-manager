@@ -255,7 +255,9 @@ export function CohortNominate() {
                     required
                     value={traineeEmail}
                     onChange={(e) => setTraineeEmail(e.target.value)}
-                    placeholder="jordan.scott@example.com"
+                    pattern="[^\s@]+@mphasis\.com"
+                    title="Use your @mphasis.com email address"
+                    placeholder="jordan.scott@mphasis.com"
                     className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
@@ -268,8 +270,12 @@ export function CohortNominate() {
                     type="text"
                     required
                     value={traineeEmpId}
-                    onChange={(e) => setTraineeEmpId(e.target.value)}
-                    placeholder="EMP-305"
+                    onChange={(e) => setTraineeEmpId(e.target.value.replace(/\D/g, '').slice(0, 7))}
+                    inputMode="numeric"
+                    pattern="[0-9]{7}"
+                    maxLength={7}
+                    title="Enter exactly 7 digits"
+                    placeholder="1234567"
                     className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
@@ -408,7 +414,9 @@ export function CohortNominate() {
                     required
                     value={mentorEmail}
                     onChange={(e) => setMentorEmail(e.target.value)}
-                    placeholder="morgan.taylor@example.com"
+                    pattern="[^\s@]+@mphasis\.com"
+                    title="Use your @mphasis.com email address"
+                    placeholder="morgan.taylor@mphasis.com"
                     className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -421,8 +429,12 @@ export function CohortNominate() {
                     type="text"
                     required
                     value={mentorEmpId}
-                    onChange={(e) => setMentorEmpId(e.target.value)}
-                    placeholder="e.g. EMP-123456"
+                    onChange={(e) => setMentorEmpId(e.target.value.replace(/\D/g, '').slice(0, 7))}
+                    inputMode="numeric"
+                    pattern="[0-9]{7}"
+                    maxLength={7}
+                    title="Enter exactly 7 digits"
+                    placeholder="1234567"
                     className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500"
                   />
                 </div>

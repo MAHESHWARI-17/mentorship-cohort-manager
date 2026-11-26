@@ -189,9 +189,9 @@ export function FeedbackTemplates() {
         </button>
       </div>
 
-      {/* Grid */}
+      {/* Template list */}
       {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="space-y-4">
           <SkeletonCard count={3} />
         </div>
       ) : templatesData?.items?.length === 0 ? (
@@ -213,50 +213,52 @@ export function FeedbackTemplates() {
           }
         />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="space-y-4">
           {templatesData?.items?.map((tpl) => (
-            <Card key={tpl.id} hover className="flex flex-col justify-between">
-              <CardBody className="p-6">
-                <div className="flex justify-between items-start gap-2 mb-3">
-                  <h3 className="font-bold text-slate-800 text-base line-clamp-1">{tpl.name}</h3>
-                  <Badge variant="primary">{tpl.fields?.length || 0} Fields</Badge>
-                </div>
+            <Card key={tpl.id} hover>
+              <CardBody className="p-4 sm:p-5">
+                <div className="flex flex-col xl:flex-row xl:items-center gap-4">
+                  <div className="flex items-center justify-between gap-3 xl:w-72 xl:shrink-0">
+                    <h3 className="font-bold text-slate-800 text-base min-w-0">{tpl.name}</h3>
+                    <Badge variant="primary" className="shrink-0">{tpl.fields?.length || 0} Fields</Badge>
+                  </div>
 
-                <div className="space-y-2 pt-3 border-t border-slate-100">
+                  <div className="flex-1 flex flex-wrap gap-2 xl:border-l xl:border-slate-100 xl:pl-4">
                   {tpl.fields?.map((f, i) => (
-                    <div key={f.key || i} className="p-2 rounded-lg bg-slate-50 flex items-center justify-between text-xs">
-                      <span className="font-semibold text-slate-700 line-clamp-1">{f.label}</span>
+                    <div key={f.key || i} className="max-w-full p-2 rounded-lg bg-slate-50 flex items-center gap-2 text-xs">
+                      <span className="font-semibold text-slate-700">{f.label}</span>
                       <span className="font-mono text-[10px] uppercase text-slate-400 bg-white px-2 py-0.5 rounded border border-slate-200">
                         {f.type}
                       </span>
                     </div>
                   ))}
+                  </div>
+
+                  <div className="flex items-center gap-4 xl:shrink-0 xl:border-l xl:border-slate-100 xl:pl-4">
+                    <button
+                      onClick={() => {
+                        setPreviewTemplate(tpl);
+                        setIsPreviewOpen(true);
+                      }}
+                      className="text-xs font-bold text-slate-600 hover:text-slate-800 flex items-center gap-1"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>Preview Form</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (window.confirm(`Delete feedback template "${tpl.name}"?`)) {
+                          deleteMutation.mutate(tpl.id);
+                        }
+                      }}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                      title="Delete template"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </CardBody>
-
-              <CardFooter className="bg-slate-50/50">
-                <button
-                  onClick={() => {
-                    setPreviewTemplate(tpl);
-                    setIsPreviewOpen(true);
-                  }}
-                  className="text-xs font-bold text-slate-600 hover:text-slate-800 flex items-center gap-1"
-                >
-                  <Eye className="w-3.5 h-3.5" />
-                  <span>Preview Form</span>
-                </button>
-                <button
-                  onClick={() => {
-                    if (window.confirm(`Delete feedback template "${tpl.name}"?`)) {
-                      deleteMutation.mutate(tpl.id);
-                    }
-                  }}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                  title="Delete template"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </CardFooter>
             </Card>
           ))}
         </div>

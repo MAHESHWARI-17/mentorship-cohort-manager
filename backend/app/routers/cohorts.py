@@ -43,6 +43,23 @@ async def get_cohort(
     await ensure_mentor_cohort_access(db, current_user, cohort_id)
     return await CohortService.get_cohort_by_id(db, cohort_id)
 
+@router.get("/{cohort_id}/leadership-evaluations")
+async def get_cohort_leadership_evaluations(
+    cohort_id: str,
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    current_user: dict = Depends(require_admin)
+):
+    try:
+        cohort_oid = ObjectId(cohort_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Cohort not found")
+    if not await db.cohorts.find_one({"_id": cohort_oid}, {"_id": 1}):
+        raise HTTPException(status_code=404, detail="Cohort not found")
+    evaluations = await db.mentorEvaluations.find({"cohortId": cohort_id}).sort("submittedAt", -1).to_list(None)
+    for evaluation in evaluations:
+        evaluation["id"] = str(evaluation.pop("_id"))
+    return evaluations
+
 @router.put("/{cohort_id}", response_model=CohortResponse)
 async def update_cohort(
     cohort_id: str,
